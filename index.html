@@ -1,0 +1,1463 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Generador de Recibos de Abono</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  :root{
+    --ink:#10243E;
+    --ink-soft:#2C4A6B;
+    --paper:#FBF7EE;
+    --paper-dim:#F1EAD9;
+    --line:#D9CFB4;
+    --teal:#1F6F5C;
+    --teal-dim:#e4efe9;
+    --copper:#B8862B;
+    --danger:#B23A48;
+    --muted:#7A7264;
+    --bg1:#0B1B2E;
+    --bg2:#132C46;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    min-height:100vh;
+    font-family:'Inter',sans-serif;
+    background:
+      radial-gradient(1100px 700px at 15% -10%, #1c3a5c 0%, transparent 60%),
+      radial-gradient(900px 600px at 110% 20%, #0f2947 0%, transparent 55%),
+      linear-gradient(160deg, var(--bg1), var(--bg2));
+    color:var(--ink);
+    padding:32px 18px 60px;
+    display:flex;
+    justify-content:center;
+  }
+  .wrap{
+    width:100%;
+    max-width:1080px;
+    display:grid;
+    grid-template-columns:1fr 400px;
+    gap:34px;
+    align-items:start;
+  }
+  @media(max-width:860px){
+    .wrap{grid-template-columns:1fr;}
+  }
+
+  /* ---------- FORM PANEL ---------- */
+  .panel{
+    background:linear-gradient(165deg,#0F2A47,#0B2038);
+    border:1px solid rgba(255,255,255,0.08);
+    border-radius:20px;
+    padding:30px 28px 26px;
+    box-shadow:0 30px 60px -25px rgba(0,0,0,0.6);
+  }
+  .panel h1{
+    font-family:'Fraunces',serif;
+    font-weight:600;
+    font-size:1.5rem;
+    color:#F7F1E1;
+    margin:0 0 4px;
+    letter-spacing:.2px;
+  }
+  .panel .sub{
+    color:#9FB2C8;
+    font-size:.86rem;
+    margin:0 0 26px;
+  }
+  .field{margin-bottom:16px;}
+  .field label{
+    display:block;
+    font-size:.72rem;
+    text-transform:uppercase;
+    letter-spacing:.09em;
+    color:#8EA3BB;
+    margin-bottom:6px;
+    font-weight:600;
+  }
+  .field .opt{
+    color:#5C7085;
+    text-transform:none;
+    font-weight:400;
+    letter-spacing:0;
+    font-size:.72rem;
+  }
+  .field input,
+  .field select,
+  .field textarea{
+    width:100%;
+    background:rgba(255,255,255,0.04);
+    border:1px solid rgba(255,255,255,0.12);
+    border-radius:10px;
+    padding:11px 13px;
+    color:#F7F1E1;
+    font-family:'Inter',sans-serif;
+    font-size:.95rem;
+    outline:none;
+    transition:border-color .15s, background .15s;
+  }
+  .field input[type="number"]{font-family:'IBM Plex Mono',monospace;}
+  .field textarea{resize:vertical;min-height:46px;font-family:'Inter',sans-serif;}
+  .field input:focus,
+  .field select:focus,
+  .field textarea:focus{
+    border-color:var(--copper);
+    background:rgba(255,255,255,0.07);
+  }
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  .divider{
+    border:none;
+    border-top:1px dashed rgba(255,255,255,0.14);
+    margin:22px 0 18px;
+  }
+  .actions{display:flex;flex-direction:column;gap:10px;margin-top:22px;}
+  .btn{
+    border:none;
+    border-radius:11px;
+    padding:13px 16px;
+    font-family:'Inter',sans-serif;
+    font-weight:600;
+    font-size:.9rem;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+    transition:transform .12s ease, filter .12s ease;
+  }
+  .btn:active{transform:scale(0.98);}
+  .btn-primary{background:linear-gradient(135deg,#C9A24A,var(--copper));color:#241706;}
+  .btn-primary:hover{filter:brightness(1.07);}
+  .btn-secondary{background:rgba(255,255,255,0.07);color:#F0EAD9;border:1px solid rgba(255,255,255,0.14);}
+  .btn-secondary:hover{background:rgba(255,255,255,0.12);}
+  .btn-whatsapp{background:linear-gradient(135deg,#2FBE8F,#1F6F5C);color:#F4FFF9;}
+  .btn-whatsapp:hover{filter:brightness(1.08);}
+  .btn-ghost{background:transparent;color:#7E93AB;font-weight:500;padding:8px;}
+  .btn-ghost:hover{color:#B7C6D8;}
+
+  /* ---------- HISTORIAL (form) ---------- */
+  .hist-row{
+    display:grid;
+    grid-template-columns:1fr 1fr auto;
+    gap:8px;
+    margin-bottom:8px;
+    align-items:center;
+  }
+  .hist-row input{padding:9px 10px;font-size:.86rem;}
+  .hist-remove{
+    background:rgba(178,58,72,0.15);
+    border:1px solid rgba(178,58,72,0.35);
+    color:#E7A0A8;
+    border-radius:8px;
+    width:34px;height:34px;
+    cursor:pointer;
+    font-size:.9rem;
+    line-height:1;
+    flex-shrink:0;
+  }
+  .hist-remove:hover{background:rgba(178,58,72,0.28);}
+  .hist-add{
+    background:transparent;
+    border:1px dashed rgba(255,255,255,0.25);
+    color:#9FB2C8;
+    border-radius:9px;
+    padding:9px;
+    width:100%;
+    cursor:pointer;
+    font-size:.82rem;
+    font-weight:600;
+    margin-top:2px;
+  }
+  .hist-add:hover{border-color:var(--copper);color:#F0EAD9;}
+
+  /* ---------- SWITCHES ---------- */
+  .switch{position:relative;width:40px;height:23px;flex-shrink:0;}
+  .switch input{opacity:0;width:0;height:0;position:absolute;}
+  .switch .slider{
+    position:absolute;inset:0;cursor:pointer;
+    background:rgba(255,255,255,0.15);
+    border-radius:999px;
+    transition:background .2s;
+  }
+  .switch .slider:before{
+    content:"";position:absolute;width:17px;height:17px;
+    left:3px;top:3px;background:#fff;border-radius:50%;
+    transition:transform .2s;
+    box-shadow:0 1px 3px rgba(0,0,0,.4);
+  }
+  .switch input:checked + .slider{background:var(--copper);}
+  .switch input:checked + .slider:before{transform:translateX(17px);}
+
+  .toggle-row{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:9px 0;
+    border-bottom:1px solid rgba(255,255,255,0.06);
+    font-size:.85rem;
+    color:#DCE6F0;
+  }
+  .toggle-row:last-child{border-bottom:none;}
+  .theme-row{
+    display:flex;align-items:center;justify-content:space-between;
+    background:rgba(255,255,255,0.05);
+    border:1px solid rgba(255,255,255,0.1);
+    border-radius:12px;
+    padding:12px 14px;
+    margin-bottom:22px;
+  }
+  .theme-row span{font-size:.85rem;color:#F0EAD9;font-weight:600;}
+  .theme-row .sub2{display:block;font-weight:400;color:#8EA3BB;font-size:.72rem;margin-top:1px;}
+
+  /* ---------- MODO OSCURO DEL TICKET ---------- */
+  #receipt.receipt-dark{
+    --ink:#F3ECDA;
+    --paper:#101B2C;
+    --paper-dim:#1B2C42;
+    --line:rgba(255,255,255,0.16);
+    --muted:#93A2B4;
+  }
+  #receipt.receipt-dark .r-note{color:#CFC6A8;}
+  #receipt.receipt-dark .receipt-tape{background:rgba(184,134,43,0.35);border-color:rgba(184,134,43,0.45);}
+
+  /* ---------- RECEIPT ---------- */
+  .receipt-stage{
+    position:sticky;
+    top:28px;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+  }
+  #receipt{
+    width:100%;
+    max-width:380px;
+    background:var(--paper);
+    color:var(--ink);
+    position:relative;
+    padding:30px 26px 40px;
+    font-family:'Inter',sans-serif;
+    box-shadow:0 40px 70px -30px rgba(0,0,0,0.55);
+    clip-path: polygon(
+      0% 0%, 100% 0%, 100% 96%,
+      95% 100%, 90% 96%, 85% 100%, 80% 96%, 75% 100%, 70% 96%, 65% 100%,
+      60% 96%, 55% 100%, 50% 96%, 45% 100%, 40% 96%, 35% 100%, 30% 96%,
+      25% 100%, 20% 96%, 15% 100%, 10% 96%, 5% 100%, 0% 96%
+    );
+  }
+  .receipt-tape{
+    position:absolute;
+    top:-10px;left:50%;
+    transform:translateX(-50%) rotate(-2deg);
+    width:120px;height:26px;
+    background:rgba(184,134,43,0.28);
+    border:1px solid rgba(184,134,43,0.35);
+  }
+  .r-head{
+    text-align:center;
+    padding-bottom:16px;
+    margin-bottom:16px;
+    border-bottom:1px dashed var(--line);
+  }
+  .r-brand{
+    font-family:'Fraunces',serif;
+    font-weight:600;
+    font-size:1.22rem;
+    line-height:1.15;
+    margin:0 0 2px;
+  }
+  .r-tagline{
+    font-size:.68rem;
+    letter-spacing:.12em;
+    text-transform:uppercase;
+    color:var(--muted);
+    margin:0;
+  }
+  .r-meta{
+    display:flex;
+    justify-content:space-between;
+    font-size:.72rem;
+    color:var(--muted);
+    margin-top:10px;
+    font-family:'IBM Plex Mono',monospace;
+  }
+  .r-block{margin-bottom:14px;}
+  .r-label{
+    font-size:.68rem;
+    text-transform:uppercase;
+    letter-spacing:.09em;
+    color:var(--muted);
+    margin-bottom:2px;
+  }
+  .r-value{font-size:.95rem;font-weight:600;}
+  .r-line{
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+    padding:9px 0;
+    border-bottom:1px dotted var(--line);
+    font-family:'IBM Plex Mono',monospace;
+  }
+  .r-line .l{font-size:.78rem;color:var(--muted);font-family:'Inter',sans-serif;}
+  .r-line .v{font-size:.98rem;font-weight:600;}
+  .r-hero{
+    margin:18px 0 6px;
+    background:var(--paper-dim);
+    border:1px solid var(--line);
+    border-radius:6px;
+    padding:14px 16px;
+    text-align:center;
+  }
+  .r-hero .r-label{margin-bottom:4px;}
+  .r-hero .amt{
+    font-family:'IBM Plex Mono',monospace;
+    font-weight:700;
+    font-size:1.7rem;
+    letter-spacing:-0.02em;
+  }
+  .r-hero .amt.credit{color:var(--teal);}
+  .r-hero .amt.debt{color:var(--ink);}
+  .r-hero .note{font-size:.68rem;color:var(--muted);margin-top:3px;}
+  .r-note{
+    margin-top:16px;
+    font-size:.8rem;
+    color:#4C4A3E;
+    font-style:italic;
+    line-height:1.4;
+  }
+  .r-history{margin:16px 0 4px;}
+  .r-history table{width:100%;border-collapse:collapse;font-family:'IBM Plex Mono',monospace;}
+  .r-history th{
+    text-align:left;
+    font-family:'Inter',sans-serif;
+    font-size:.64rem;
+    text-transform:uppercase;
+    letter-spacing:.08em;
+    color:var(--muted);
+    font-weight:600;
+    padding-bottom:4px;
+    border-bottom:1px solid var(--line);
+  }
+  .r-history th:last-child, .r-history td:last-child{text-align:right;}
+  .r-history td{
+    font-size:.8rem;
+    padding:5px 0;
+    border-bottom:1px dotted var(--line);
+  }
+  .r-history .tot-row td{
+    font-weight:700;
+    border-bottom:none;
+    padding-top:6px;
+    color:var(--ink);
+  }
+  .r-foot{
+    margin-top:22px;
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-end;
+    gap:10px;
+  }
+  .r-advisor{font-size:.7rem;color:var(--muted);line-height:1.4;}
+  .r-advisor b{display:block;color:var(--ink);font-size:.78rem;}
+
+  /* stamp */
+  .stamp{
+    width:96px;height:96px;
+    border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    position:relative;
+    transform:rotate(-11deg);
+    flex-shrink:0;
+    filter:contrast(1.15);
+  }
+  .stamp svg{width:100%;height:100%;overflow:visible;}
+  .stamp-text{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:8.4px;
+    font-weight:700;
+    letter-spacing:2.2px;
+  }
+  .stamp-center{
+    font-family:'Fraunces',serif;
+    font-weight:700;
+  }
+
+  .hint{
+    text-align:center;
+    color:#6E86A0;
+    font-size:.75rem;
+    margin-top:16px;
+    max-width:380px;
+    line-height:1.5;
+  }
+
+  /* ---------- STORAGE WARNING BANNER ---------- */
+  .storage-banner{
+    display:none;
+    background:rgba(178,58,72,0.16);
+    border:1px solid rgba(178,58,72,0.4);
+    color:#F3D9DC;
+    border-radius:12px;
+    padding:12px 14px;
+    font-size:.78rem;
+    line-height:1.45;
+    margin-bottom:20px;
+  }
+  .storage-banner b{display:block;color:#FBEAEC;margin-bottom:2px;font-size:.82rem;}
+
+  .backup-banner{
+    display:none;
+    background:rgba(184,134,43,0.16);
+    border:1px solid rgba(184,134,43,0.4);
+    color:#F0DFC0;
+    border-radius:12px;
+    padding:12px 14px;
+    font-size:.78rem;
+    line-height:1.45;
+    margin-bottom:20px;
+    position:relative;
+  }
+  .backup-banner b{display:block;color:#FBEFDA;margin-bottom:2px;font-size:.82rem;}
+  .backup-banner .bb-actions{display:flex;gap:8px;margin-top:8px;}
+  .backup-banner .bb-actions button{
+    border:none;border-radius:8px;padding:7px 11px;font-size:.74rem;font-weight:600;cursor:pointer;
+  }
+  .bb-export{background:var(--copper);color:#241706;}
+  .bb-dismiss{background:rgba(255,255,255,0.1);color:#F0EAD9;}
+
+  /* ---------- INLINE HINT / SUBTLE STATUS ---------- */
+  .mini-note{font-size:.72rem;color:#5C7085;margin-top:6px;line-height:1.4;}
+
+  /* ---------- GESTOR DE HISTORIAL ---------- */
+  .gestor-toggle{
+    background:transparent;
+    border:1px dashed rgba(255,255,255,0.25);
+    color:#9FB2C8;
+    border-radius:9px;
+    padding:9px;
+    width:100%;
+    cursor:pointer;
+    font-size:.82rem;
+    font-weight:600;
+    margin-top:10px;
+  }
+  .gestor-toggle:hover{border-color:var(--copper);color:#F0EAD9;}
+  .gestor-panel{
+    display:none;
+    margin-top:14px;
+    background:rgba(0,0,0,0.18);
+    border:1px solid rgba(255,255,255,0.1);
+    border-radius:12px;
+    padding:14px;
+    max-height:420px;
+    overflow-y:auto;
+  }
+  .gestor-panel.open{display:block;}
+  .gestor-cliente{
+    margin-bottom:14px;
+    padding-bottom:12px;
+    border-bottom:1px solid rgba(255,255,255,0.08);
+  }
+  .gestor-cliente:last-child{border-bottom:none;margin-bottom:0;}
+  .gestor-cliente-head{
+    font-size:.82rem;
+    font-weight:700;
+    color:#F0EAD9;
+    margin-bottom:2px;
+  }
+  .gestor-cliente-sub{
+    font-size:.7rem;
+    color:#8EA3BB;
+    margin-bottom:8px;
+  }
+  .gestor-entry{
+    display:grid;
+    grid-template-columns:1fr 1fr 1fr auto;
+    gap:6px;
+    margin-bottom:6px;
+    align-items:center;
+  }
+  .gestor-entry input{
+    padding:7px 8px;
+    font-size:.8rem;
+    background:rgba(255,255,255,0.05);
+    border:1px solid rgba(255,255,255,0.12);
+    border-radius:7px;
+    color:#F7F1E1;
+    font-family:'Inter',sans-serif;
+    width:100%;
+  }
+  .gestor-entry input[type="number"]{font-family:'IBM Plex Mono',monospace;}
+  .gestor-del{
+    background:rgba(178,58,72,0.15);
+    border:1px solid rgba(178,58,72,0.35);
+    color:#E7A0A8;
+    border-radius:7px;
+    width:30px;height:30px;
+    cursor:pointer;
+    font-size:.8rem;
+    flex-shrink:0;
+  }
+  .gestor-del:hover{background:rgba(178,58,72,0.28);}
+  .gestor-empty{color:#7E93AB;font-size:.8rem;text-align:center;padding:10px 0;}
+  .gestor-new{
+    margin-top:10px;
+    padding-top:12px;
+    border-top:1px dashed rgba(255,255,255,0.14);
+  }
+  .gestor-new-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:8px;
+    margin-bottom:8px;
+  }
+  .gestor-new input{
+    padding:8px 9px;
+    font-size:.82rem;
+    background:rgba(255,255,255,0.05);
+    border:1px solid rgba(255,255,255,0.12);
+    border-radius:8px;
+    color:#F7F1E1;
+    font-family:'Inter',sans-serif;
+    width:100%;
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <!-- FORM -->
+  <div class="panel">
+    <h1>Recibo de abono</h1>
+    <p class="sub">Llena los datos y el recibo se genera en vivo a la derecha.</p>
+
+    <div class="storage-banner" id="storage-banner">
+      <b>⚠️ Este navegador está bloqueando el guardado local</b>
+      El historial por cliente y tus preferencias no se van a guardar aquí (modo incógnito, vista dentro de otra app, o el archivo abierto directo desde Descargas). Usa "Exportar respaldo" seguido, y mejor abre esta página desde un navegador normal (Chrome/Safari) o desde una URL, no desde el archivo descargado.
+    </div>
+
+    <div class="backup-banner" id="backup-banner">
+      <b>💾 Hace tiempo que no exportas un respaldo</b>
+      <span id="bb-text">Tu historial vive solo en este navegador. Si cambias de celular o se borran los datos, se pierde.</span>
+      <div class="bb-actions">
+        <button type="button" class="bb-export" onclick="exportarHistorialCompleto()">Exportar ahora</button>
+        <button type="button" class="bb-dismiss" onclick="ocultarRecordatorioRespaldo()">Ahora no</button>
+      </div>
+    </div>
+
+    <div class="theme-row">
+      <span>🌙 Modo oscuro del recibo
+        <span class="sub2">Cambia el ticket a tinta clara sobre papel oscuro</span>
+      </span>
+      <label class="switch">
+        <input type="checkbox" id="darkMode" onchange="toggleDark()">
+        <span class="slider"></span>
+      </label>
+    </div>
+
+    <div class="field">
+      <label>Nombre / negocio en el encabezado <span class="opt">(se recuerda en este navegador)</span></label>
+      <input id="brand" type="text" value="Recibo de Abono">
+    </div>
+
+    <div class="row2">
+      <div class="field">
+        <label>Folio</label>
+        <input id="folio" type="text">
+      </div>
+      <div class="field">
+        <label>Fecha</label>
+        <input id="fecha" type="date">
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Nombre del cliente <span class="opt">(opcional)</span></label>
+      <input id="cliente" type="text" list="clientes-usados" placeholder="Ej. Juan Pérez">
+      <datalist id="clientes-usados"></datalist>
+    </div>
+
+    <div class="field">
+      <label>Qué se compró / concepto <span class="opt">(opcional)</span></label>
+      <input id="concepto" type="text" list="conceptos-usados" placeholder="Ej. Refrigerador, préstamo personal…">
+      <datalist id="conceptos-usados"></datalist>
+    </div>
+
+    <hr class="divider">
+
+    <div class="row2">
+      <div class="field">
+        <label>Adeudo total</label>
+        <input id="total" type="number" min="0" step="0.01" placeholder="0.00">
+      </div>
+      <div class="field">
+        <label>Abono</label>
+        <input id="abono" type="number" min="0" step="0.01" placeholder="0.00">
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Abonos anteriores <span class="opt">(opcional, para mostrar el historial)</span></label>
+      <div id="historyRows"></div>
+      <button type="button" class="hist-add" onclick="addHistoryRow()">+ Agregar abono anterior</button>
+    </div>
+
+    <div class="field">
+      <label>Historial por cliente + producto <span class="opt">(se carga y guarda solo)</span></label>
+      <input id="nota-abono" type="text" placeholder="Nota de este abono (opcional, ej. 'pago quincenal')" style="margin-bottom:8px;">
+      <div style="display:flex; gap:8px;">
+        <button type="button" class="hist-add" style="flex:1" onclick="cargarHistorialCliente()">🔎 Cargar historial</button>
+        <button type="button" class="hist-add" style="flex:1" onclick="guardarAbonoEnHistorialCliente()">💾 Guardar este abono</button>
+      </div>
+      <div style="display:flex; gap:8px; margin-top:8px;">
+        <button type="button" class="hist-add" style="flex:1;border-color:rgba(178,58,72,0.4);color:#E7A0A8;" onclick="borrarHistorialCliente()">🗑 Borrar este historial</button>
+      </div>
+      <p class="mini-note">El historial de un cliente conocido se carga solo al escribir su nombre, y cada abono se guarda solo al descargar o compartir el recibo. Usa estos botones solo si quieres forzarlo.</p>
+      <div id="hist-status" style="font-size:.72rem;margin-top:6px;min-height:14px;"></div>
+      <div style="display:flex; gap:8px; margin-top:10px;">
+        <button type="button" class="hist-add" style="flex:1" onclick="exportarHistorialCompleto()">⬇ Exportar respaldo (JSON)</button>
+        <button type="button" class="hist-add" style="flex:1" onclick="$('import-file').click()">⬆ Importar respaldo</button>
+        <input type="file" id="import-file" accept=".json,application/json,text/plain" style="display:none" onchange="importarHistorialCompleto(event)">
+      </div>
+      <button type="button" class="gestor-toggle" onclick="toggleGestor()">🗂 Gestionar clientes y conceptos guardados</button>
+      <div class="gestor-panel" id="gestor-panel">
+        <input id="gestor-buscar" type="text" placeholder="🔎 Buscar cliente..." style="margin-bottom:10px;padding:8px 10px;font-size:.82rem;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:#F7F1E1;font-family:'Inter',sans-serif;width:100%;" oninput="renderGestor(this.value)">
+        <div id="gestor-lista"></div>
+        <div class="gestor-new">
+          <label style="display:block;font-size:.72rem;color:#8EA3BB;margin-bottom:6px;">+ Agregar cliente / concepto nuevo</label>
+          <div class="gestor-new-grid">
+            <input id="gn-cliente" type="text" placeholder="Cliente">
+            <input id="gn-concepto" type="text" placeholder="Concepto / producto">
+            <input id="gn-fecha" type="date">
+            <input id="gn-monto" type="number" step="0.01" min="0" placeholder="Monto">
+          </div>
+          <input id="gn-nota" type="text" placeholder="Nota (opcional)" style="margin-bottom:8px;">
+          <button type="button" class="hist-add" style="width:100%" onclick="agregarClienteNuevoDesdeGestor()">+ Agregar</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Método de pago</label>
+      <select id="metodo">
+        <option>Efectivo</option>
+        <option>Transferencia</option>
+        <option>Tarjeta</option>
+        <option>Depósito</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label>Atendió / asesor <span class="opt">(opcional · se recuerda en este navegador)</span></label>
+      <input id="asesor" type="text" placeholder="Tu nombre">
+    </div>
+
+    <div class="field">
+      <label>Nota adicional <span class="opt">(opcional)</span></label>
+      <textarea id="nota" placeholder="Ej. Próximo pago sugerido: 15 de agosto"></textarea>
+    </div>
+
+    <hr class="divider">
+
+    <div class="field">
+      <label>Mostrar en el recibo <span class="opt">(oculta datos sin borrarlos)</span></label>
+      <div class="toggle-row">
+        <span>Nombre del cliente</span>
+        <label class="switch"><input type="checkbox" id="show-cliente" checked onchange="render()"><span class="slider"></span></label>
+      </div>
+      <div class="toggle-row">
+        <span>Concepto / qué se compró</span>
+        <label class="switch"><input type="checkbox" id="show-concepto" checked onchange="render()"><span class="slider"></span></label>
+      </div>
+      <div class="toggle-row">
+        <span>Historial de abonos</span>
+        <label class="switch"><input type="checkbox" id="show-historial" checked onchange="render()"><span class="slider"></span></label>
+      </div>
+      <div class="toggle-row">
+        <span>Método de pago</span>
+        <label class="switch"><input type="checkbox" id="show-metodo" checked onchange="render()"><span class="slider"></span></label>
+      </div>
+      <div class="toggle-row">
+        <span>Nota adicional</span>
+        <label class="switch"><input type="checkbox" id="show-nota" checked onchange="render()"><span class="slider"></span></label>
+      </div>
+      <div class="toggle-row">
+        <span>Folio y fecha</span>
+        <label class="switch"><input type="checkbox" id="show-folio" checked onchange="render()"><span class="slider"></span></label>
+      </div>
+      <div class="toggle-row">
+        <span>Nombre del asesor</span>
+        <label class="switch"><input type="checkbox" id="show-asesor" checked onchange="render()"><span class="slider"></span></label>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-primary" onclick="descargarImagen()">⬇ Descargar imagen (PNG)</button>
+      <button class="btn btn-secondary" onclick="descargarPDF()">⬇ Descargar PDF</button>
+      <button class="btn btn-whatsapp" onclick="compartirWhatsApp()">📲 Compartir por WhatsApp</button>
+      <button class="btn btn-ghost" onclick="restablecer()">Restablecer formulario</button>
+    </div>
+  </div>
+
+  <!-- RECEIPT -->
+  <div class="receipt-stage">
+    <div id="receipt">
+      <div class="receipt-tape"></div>
+      <div class="r-head">
+        <p class="r-brand" id="p-brand">Recibo de Abono</p>
+        <p class="r-tagline">Comprobante de pago</p>
+        <div class="r-meta" id="p-meta-row">
+          <span id="p-folio">Folio: —</span>
+          <span id="p-fecha">—</span>
+        </div>
+      </div>
+
+      <div id="p-cliente-block" class="r-block" style="display:none;">
+        <div class="r-label">Cliente</div>
+        <div class="r-value" id="p-cliente"></div>
+      </div>
+
+      <div id="p-concepto-block" class="r-block" style="display:none;">
+        <div class="r-label">Concepto</div>
+        <div class="r-value" id="p-concepto"></div>
+      </div>
+
+      <div class="r-line">
+        <span class="l">Adeudo total</span>
+        <span class="v" id="p-total">$0.00</span>
+      </div>
+      <div class="r-line">
+        <span class="l">Abono recibido</span>
+        <span class="v" id="p-abono">$0.00</span>
+      </div>
+      <div class="r-line" id="p-metodo-block">
+        <span class="l">Método de pago</span>
+        <span class="v" id="p-metodo" style="font-size:.82rem;">Efectivo</span>
+      </div>
+
+      <div id="p-history-block" class="r-history" style="display:none;">
+        <table>
+          <thead><tr><th>Fecha</th><th>Concepto</th><th>Monto</th></tr></thead>
+          <tbody id="p-history-body"></tbody>
+        </table>
+      </div>
+
+      <div class="r-hero">
+        <div class="r-label" id="p-hero-label">Adeudo restante</div>
+        <div class="amt debt" id="p-restante">$0.00</div>
+        <div class="note" id="p-hero-note"></div>
+      </div>
+
+      <div id="p-nota-block" style="display:none;">
+        <p class="r-note" id="p-nota"></p>
+      </div>
+
+      <div class="r-foot">
+        <div class="r-advisor" id="p-advisor-block">
+          <span id="p-asesor-label">Atendió</span>
+          <b id="p-asesor">—</b>
+        </div>
+        <div class="stamp" id="stamp"></div>
+      </div>
+    </div>
+
+    <p class="hint">El recibo se actualiza mientras escribes. Usa los botones de la izquierda para guardarlo como imagen o PDF.</p>
+  </div>
+
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const money = n => (isNaN(n)?0:n).toLocaleString('es-MX',{style:'currency',currency:'MXN'});
+
+const FOLIO_COUNTER_KEY = 'recibo_abonos_folio_counter';
+
+// Contador que solo sube, guardado en este navegador: garantiza que dos
+// recibos generados aquí nunca compartan folio (a diferencia del azar de antes).
+function siguienteFolioNumero(){
+  try{
+    let n = parseInt(localStorage.getItem(FOLIO_COUNTER_KEY) || '0', 10);
+    n = isNaN(n) ? 1 : n + 1;
+    localStorage.setItem(FOLIO_COUNTER_KEY, String(n));
+    return n;
+  }catch(e){
+    return null; // sin storage: cae al azar como respaldo, igual que antes
+  }
+}
+
+function genFolio(){
+  const d = new Date();
+  const fechaParte = d.getFullYear().toString().slice(2) +
+         String(d.getMonth()+1).padStart(2,'0') +
+         String(d.getDate()).padStart(2,'0');
+  const n = siguienteFolioNumero();
+  const serie = n !== null ? String(n).padStart(4,'0') : String(Math.floor(1000+Math.random()*9000));
+  return 'R-' + fechaParte + '-' + serie;
+}
+
+function initDefaults(){
+  $('folio').value = genFolio();
+  $('fecha').value = new Date().toISOString().slice(0,10);
+  cargarPreferencias();
+}
+
+const PREFS_KEY = 'recibo_abonos_prefs';
+
+// Detecta si localStorage realmente funciona en este navegador/contexto
+// (modo incógnito, webview embebido, archivo abierto como file://, etc.
+// pueden bloquearlo aunque el objeto exista y no truene al llamarlo).
+let STORAGE_OK = true;
+function storageDisponible(){
+  try{
+    const testKey = '__test_recibo_abonos__';
+    localStorage.setItem(testKey, '1');
+    const ok = localStorage.getItem(testKey) === '1';
+    localStorage.removeItem(testKey);
+    return ok;
+  }catch(e){ return false; }
+}
+
+function checkStorageDisponible(){
+  STORAGE_OK = storageDisponible();
+  $('storage-banner').style.display = STORAGE_OK ? 'none' : 'block';
+  return STORAGE_OK;
+}
+
+function cargarPreferencias(){
+  try{
+    const guardado = JSON.parse(localStorage.getItem(PREFS_KEY) || '{}');
+    if(guardado.brand) $('brand').value = guardado.brand;
+    if(guardado.asesor) $('asesor').value = guardado.asesor;
+  }catch(e){ /* si algo falla, simplemente no precarga nada */ }
+}
+
+function guardarPreferencias(){
+  try{
+    localStorage.setItem(PREFS_KEY, JSON.stringify({
+      brand: $('brand').value.trim(),
+      asesor: $('asesor').value.trim()
+    }));
+  }catch(e){ /* localStorage no disponible: el banner ya lo advierte */ }
+}
+
+function buildStamp(liquidado){
+  const color = liquidado ? '#1F6F5C' : '#B8862B';
+  const label = liquidado ? 'LIQUIDADO' : 'ABONO REGISTRADO';
+  const centerTop = liquidado ? '✓' : '$';
+  const id = 'circlePath';
+  return `
+  <svg viewBox="0 0 100 100">
+    <filter id="grain">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" result="n"/>
+      <feColorMatrix in="n" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.05 0"/>
+      <feComposite operator="over" in2="SourceGraphic"/>
+    </filter>
+    <g filter="url(#grain)">
+      <circle cx="50" cy="50" r="47" fill="none" stroke="${color}" stroke-width="2.4"/>
+      <circle cx="50" cy="50" r="40" fill="none" stroke="${color}" stroke-width="1"/>
+      <path id="${id}" d="M 50,50 m -33,0 a 33,33 0 1,1 66,0 a 33,33 0 1,1 -66,0" fill="none"/>
+      <text class="stamp-text" fill="${color}">
+        <textPath href="#${id}" startOffset="2%">${label} • ${label} •</textPath>
+      </text>
+      <text x="50" y="47" text-anchor="middle" class="stamp-center" fill="${color}" font-size="13">${centerTop}</text>
+      <text x="50" y="60" text-anchor="middle" font-family="IBM Plex Mono" font-size="6" fill="${color}">${$('fecha').value || ''}</text>
+    </g>
+  </svg>`;
+}
+
+const CLIENTES_KEY = 'recibo_abonos_historial_clientes';
+const TOTALES_KEY = 'recibo_abonos_totales_clientes';
+
+function normKey(cliente, concepto){
+  return (cliente||'').trim().toLowerCase() + '||' + (concepto||'').trim().toLowerCase();
+}
+
+function getHistorialClientes(){
+  try{ return JSON.parse(localStorage.getItem(CLIENTES_KEY) || '{}'); }
+  catch(e){ return {}; }
+}
+
+// Devuelve true/false según si realmente se guardó — ya no falla en silencio.
+function setHistorialClientes(data){
+  try{
+    localStorage.setItem(CLIENTES_KEY, JSON.stringify(data));
+    return true;
+  }catch(e){
+    console.error('No se pudo guardar el historial:', e);
+    checkStorageDisponible();
+    return false;
+  }
+}
+
+function getTotalesClientes(){
+  try{ return JSON.parse(localStorage.getItem(TOTALES_KEY) || '{}'); }
+  catch(e){ return {}; }
+}
+
+function setTotalesClientes(data){
+  try{ localStorage.setItem(TOTALES_KEY, JSON.stringify(data)); return true; }
+  catch(e){ return false; }
+}
+
+function guardarTotalCliente(cliente, concepto, total){
+  if(!cliente || !(total > 0)) return;
+  const key = normKey(cliente, concepto);
+  const data = getTotalesClientes();
+  data[key] = total;
+  setTotalesClientes(data);
+}
+
+function setHistStatus(texto, color){
+  const status = $('hist-status');
+  status.textContent = texto;
+  status.style.color = color || '#8EA3BB';
+}
+
+// Recuerda si ya se auto-cargó / auto-guardó para el cliente+concepto actual,
+// para no repetir el confirm() de mezcla ni duplicar el abono guardado.
+let ultimoClienteCargado = null;
+let ultimoAbonoAutoguardado = null;
+
+function checkHistorialDisponible(){
+  const cliente = $('cliente').value.trim();
+  const concepto = $('concepto').value.trim();
+  ultimoAbonoAutoguardado = null; // cambió cliente/concepto: ya se puede volver a guardar
+  if(!cliente){ setHistStatus(''); ultimoClienteCargado = null; return; }
+  const key = normKey(cliente, concepto);
+  const registros = getHistorialClientes()[key];
+
+  if(registros && registros.length){
+    setHistStatus(`📁 ${registros.length} abono(s) guardado(s) para "${cliente}"${concepto ? ' · ' + concepto : ''}`, '#2FBE8F');
+    // Autocarga silenciosa: solo si no hay filas ya escritas a mano y no se ha
+    // cargado ya este mismo cliente/concepto en esta sesión.
+    if(!document.querySelectorAll('#historyRows .hist-row').length && ultimoClienteCargado !== key){
+      $('historyRows').innerHTML = '';
+      registros.forEach(r => addHistoryRow(r.fecha, r.monto, r.concepto));
+      ultimoClienteCargado = key;
+      setHistStatus(`✅ Historial cargado solo (${registros.length} abono(s)) para "${cliente}"`, '#2FBE8F');
+    }
+  } else if(!STORAGE_OK) {
+    setHistStatus('⚠️ No se puede leer el historial: revisa el aviso de arriba.', '#E7A0A8');
+  } else {
+    setHistStatus('Sin historial guardado para este cliente/producto todavía.');
+    ultimoClienteCargado = null;
+  }
+
+  // Precargar el último "adeudo total" conocido de este cliente/concepto,
+  // solo si el campo total está vacío para no pisar lo que ya escribiste.
+  const totales = getTotalesClientes();
+  if(totales[key] && !$('total').value){
+    $('total').value = totales[key];
+    render();
+  }
+}
+
+function cargarHistorialCliente(){
+  const cliente = $('cliente').value.trim();
+  const concepto = $('concepto').value.trim();
+  if(!cliente){ alert('Escribe primero el nombre del cliente.'); return; }
+  const registros = getHistorialClientes()[normKey(cliente, concepto)];
+  if(!registros || !registros.length){ alert('No hay historial guardado para este cliente/producto.'); return; }
+  if(document.querySelectorAll('#historyRows .hist-row').length && !confirm('Esto reemplazará las filas de historial que ya escribiste a mano. ¿Continuar?')) return;
+  $('historyRows').innerHTML = '';
+  registros.forEach(r => addHistoryRow(r.fecha, r.monto, r.concepto));
+  ultimoClienteCargado = normKey(cliente, concepto);
+  setHistStatus(`✅ Se cargaron ${registros.length} abono(s) anterior(es)`, '#2FBE8F');
+}
+
+// silencioso=true se usa para el autoguardado al descargar/compartir (sin alerts).
+function guardarAbonoEnHistorialCliente(silencioso){
+  const cliente = $('cliente').value.trim();
+  if(!cliente){ if(!silencioso) alert('Escribe el nombre del cliente antes de guardar.'); return false; }
+  const abono = parseFloat($('abono').value) || 0;
+  if(abono <= 0){ if(!silencioso) alert('Captura un monto de abono mayor a cero antes de guardarlo.'); return false; }
+  const concepto = $('concepto').value.trim();
+  const key = normKey(cliente, concepto);
+
+  if(silencioso && ultimoAbonoAutoguardado === key + '|' + abono){
+    return true; // ya se autoguardó este mismo abono, evita duplicarlo
+  }
+
+  const fecha = $('fecha').value || new Date().toISOString().slice(0,10);
+  const nota = $('nota-abono').value.trim();
+  const data = getHistorialClientes();
+  if(!data[key]) data[key] = [];
+  data[key].push({ fecha, concepto: nota, monto: abono });
+  const ok = setHistorialClientes(data);
+
+  const total = parseFloat($('total').value) || 0;
+  if(total > 0) guardarTotalCliente(cliente, concepto, total);
+
+  refreshConceptosDatalist();
+  refreshClientesDatalist();
+
+  if(ok){
+    ultimoAbonoAutoguardado = key + '|' + abono;
+    if(!silencioso) setHistStatus(`✅ Abono de ${money(abono)} guardado en el historial de "${cliente}"`, '#2FBE8F');
+  } else if(!silencioso){
+    setHistStatus('❌ No se pudo guardar: este navegador está bloqueando el almacenamiento local.', '#E7A0A8');
+  }
+  return ok;
+}
+
+// Se llama antes de generar imagen/PDF/WhatsApp: guarda el abono actual solo
+// si hay cliente y monto capturados, sin interrumpir con alerts.
+function autoguardarAbonoSiCorresponde(){
+  const cliente = $('cliente').value.trim();
+  const abono = parseFloat($('abono').value) || 0;
+  if(cliente && abono > 0){
+    guardarAbonoEnHistorialCliente(true);
+  }
+}
+
+function refreshConceptosDatalist(){
+  const data = getHistorialClientes();
+  const conceptos = new Set();
+  Object.keys(data).forEach(key => {
+    const concepto = key.split('||')[1];
+    if(concepto) conceptos.add(concepto);
+  });
+  const datalist = $('conceptos-usados');
+  datalist.innerHTML = [...conceptos].map(c =>
+    `<option value="${c.replace(/"/g,'&quot;')}"></option>`
+  ).join('');
+}
+
+function refreshClientesDatalist(){
+  const data = getHistorialClientes();
+  const clientes = new Set();
+  Object.keys(data).forEach(key => {
+    const cliente = key.split('||')[0];
+    if(cliente) clientes.add(cliente);
+  });
+  const datalist = $('clientes-usados');
+  datalist.innerHTML = [...clientes].map(c =>
+    `<option value="${c.replace(/"/g,'&quot;')}"></option>`
+  ).join('');
+}
+
+function borrarHistorialCliente(){
+  const cliente = $('cliente').value.trim();
+  const concepto = $('concepto').value.trim();
+  if(!cliente){ alert('Escribe primero el nombre del cliente.'); return; }
+  const key = normKey(cliente, concepto);
+  const data = getHistorialClientes();
+  if(!data[key] || !data[key].length){ alert('No hay historial guardado para este cliente/producto.'); return; }
+  if(!confirm(`¿Borrar el historial guardado de "${cliente}"${concepto ? ' · ' + concepto : ''}? Esta acción no se puede deshacer.`)) return;
+  delete data[key];
+  setHistorialClientes(data);
+  refreshConceptosDatalist();
+  refreshClientesDatalist();
+  setHistStatus('🗑 Historial borrado para este cliente/producto.');
+}
+
+/* ---------- GESTOR MANUAL DE CLIENTES Y CONCEPTOS ---------- */
+
+function toggleGestor(){
+  const panel = $('gestor-panel');
+  panel.classList.toggle('open');
+  if(panel.classList.contains('open')) renderGestor($('gestor-buscar').value);
+}
+
+function renderGestor(filtro){
+  const data = getHistorialClientes();
+  const totales = getTotalesClientes();
+  const busqueda = (filtro||'').trim().toLowerCase();
+  let keys = Object.keys(data).sort();
+  if(busqueda){
+    keys = keys.filter(key => key.split('||')[0].includes(busqueda));
+  }
+  const cont = $('gestor-lista');
+  if(!keys.length){
+    cont.innerHTML = `<div class="gestor-empty">${busqueda ? 'Ningún cliente coincide con la búsqueda.' : 'Todavía no hay clientes guardados.'}</div>`;
+    return;
+  }
+  cont.innerHTML = keys.map(key => {
+    const [clienteLower, conceptoLower] = key.split('||');
+    const entradas = data[key];
+    const abonado = entradas.reduce((s,e) => s + (parseFloat(e.monto)||0), 0);
+    const totalConocido = totales[key];
+    let saldoTexto;
+    if(totalConocido){
+      const pendiente = totalConocido - abonado;
+      saldoTexto = pendiente > 0
+        ? `Abonado ${money(abonado)} de ${money(totalConocido)} · Pendiente ${money(pendiente)}`
+        : `Abonado ${money(abonado)} · Cuenta liquidada ✓`;
+    } else {
+      saldoTexto = `Abonado ${money(abonado)} · total no registrado aún`;
+    }
+    const filas = entradas.map((e, i) => `
+      <div class="gestor-entry" data-key="${encodeURIComponent(key)}" data-idx="${i}">
+        <input type="date" class="ge-fecha" value="${e.fecha||''}">
+        <input type="text" class="ge-nota" placeholder="Nota" value="${(e.concepto||'').replace(/"/g,'&quot;')}">
+        <input type="number" step="0.01" min="0" class="ge-monto" value="${e.monto||0}">
+        <button type="button" class="gestor-del" title="Eliminar este abono" onclick="eliminarEntradaGestor('${encodeURIComponent(key)}', ${i})">✕</button>
+      </div>`).join('');
+    return `
+      <div class="gestor-cliente">
+        <div class="gestor-cliente-head">${clienteLower || '(sin nombre)'}</div>
+        <div class="gestor-cliente-sub">${conceptoLower ? conceptoLower : 'sin concepto específico'} · ${entradas.length} abono(s)</div>
+        <div class="gestor-cliente-sub" style="color:#C9A24A;font-weight:600;">${saldoTexto}</div>
+        ${filas}
+      </div>`;
+  }).join('');
+
+  cont.querySelectorAll('.gestor-entry input').forEach(inp => {
+    inp.addEventListener('change', e => {
+      const row = e.target.closest('.gestor-entry');
+      guardarEdicionGestor(decodeURIComponent(row.dataset.key), parseInt(row.dataset.idx, 10), row);
+    });
+  });
+}
+
+function guardarEdicionGestor(key, idx, row){
+  const data = getHistorialClientes();
+  if(!data[key] || !data[key][idx]) return;
+  data[key][idx] = {
+    fecha: row.querySelector('.ge-fecha').value,
+    concepto: row.querySelector('.ge-nota').value.trim(),
+    monto: parseFloat(row.querySelector('.ge-monto').value) || 0
+  };
+  const ok = setHistorialClientes(data);
+  checkHistorialDisponible();
+  setHistStatus(ok ? '✅ Cambio guardado en el gestor.' : '❌ No se pudo guardar el cambio.', ok ? '#2FBE8F' : '#E7A0A8');
+}
+
+function eliminarEntradaGestor(keyEncoded, idx){
+  const key = decodeURIComponent(keyEncoded);
+  if(!confirm('¿Eliminar este abono del historial? No se puede deshacer.')) return;
+  const data = getHistorialClientes();
+  if(!data[key]) return;
+  data[key].splice(idx, 1);
+  if(!data[key].length) delete data[key];
+  setHistorialClientes(data);
+  refreshConceptosDatalist();
+  refreshClientesDatalist();
+  renderGestor($('gestor-buscar').value);
+  checkHistorialDisponible();
+}
+
+function agregarClienteNuevoDesdeGestor(){
+  const cliente = $('gn-cliente').value.trim();
+  const concepto = $('gn-concepto').value.trim();
+  const fecha = $('gn-fecha').value || new Date().toISOString().slice(0,10);
+  const monto = parseFloat($('gn-monto').value) || 0;
+  const nota = $('gn-nota').value.trim();
+  if(!cliente){ alert('Escribe el nombre del cliente.'); return; }
+  if(monto <= 0){ alert('Captura un monto mayor a cero.'); return; }
+  const key = normKey(cliente, concepto);
+  const data = getHistorialClientes();
+  if(!data[key]) data[key] = [];
+  data[key].push({ fecha, concepto: nota, monto });
+  const ok = setHistorialClientes(data);
+  refreshConceptosDatalist();
+  refreshClientesDatalist();
+  ['gn-cliente','gn-concepto','gn-fecha','gn-monto','gn-nota'].forEach(id => $(id).value = '');
+  renderGestor($('gestor-buscar').value);
+  setHistStatus(ok ? `✅ Cliente/concepto agregado.` : '❌ No se pudo guardar.', ok ? '#2FBE8F' : '#E7A0A8');
+}
+
+const BACKUP_LAST_KEY = 'recibo_abonos_ultimo_respaldo';
+const BACKUP_REMINDER_DAYS = 7;
+
+function registrarRespaldoHecho(){
+  try{ localStorage.setItem(BACKUP_LAST_KEY, new Date().toISOString()); }catch(e){ /* sin storage: se ignora */ }
+  $('backup-banner').style.display = 'none';
+}
+
+function exportarHistorialCompleto(){
+  const data = getHistorialClientes();
+  if(!Object.keys(data).length){ alert('Todavía no hay historial guardado para exportar.'); return; }
+  const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+  const link = document.createElement('a');
+  link.download = 'respaldo-historial-abonos-' + new Date().toISOString().slice(0,10) + '.json';
+  link.href = URL.createObjectURL(blob);
+  link.click();
+  URL.revokeObjectURL(link.href);
+  registrarRespaldoHecho();
+}
+
+// Aviso amable (no bloqueante) si hay historial guardado y hace rato que
+// no se exporta un respaldo. Se vuelve a mostrar en la siguiente visita si
+// sigue sin resolverse; "Ahora no" solo lo oculta por esta sesión.
+function checkRecordatorioRespaldo(){
+  if(!STORAGE_OK) return; // el otro aviso ya cubre este caso
+  const data = getHistorialClientes();
+  if(!Object.keys(data).length) return;
+  let ultimo;
+  try{ ultimo = localStorage.getItem(BACKUP_LAST_KEY); }catch(e){ ultimo = null; }
+  const diasPasados = ultimo ? (Date.now() - new Date(ultimo).getTime()) / 86400000 : Infinity;
+  if(diasPasados >= BACKUP_REMINDER_DAYS){
+    $('bb-text').textContent = ultimo
+      ? `Tu último respaldo fue hace más de ${BACKUP_REMINDER_DAYS} días. Si cambias de celular o se borran los datos, se pierde.`
+      : 'Tu historial vive solo en este navegador. Si cambias de celular o se borran los datos, se pierde.';
+    $('backup-banner').style.display = 'block';
+  }
+}
+
+function ocultarRecordatorioRespaldo(){
+  $('backup-banner').style.display = 'none';
+}
+
+// Valida que el JSON tenga exactamente la forma que produce exportarHistorialCompleto():
+// { "cliente||concepto": [ {fecha, concepto, monto}, ... ], ... }
+function esBackupValido(obj){
+  if(typeof obj !== 'object' || obj === null || Array.isArray(obj)) return false;
+  return Object.entries(obj).every(([key, entradas]) =>
+    typeof key === 'string' &&
+    Array.isArray(entradas) &&
+    entradas.every(e =>
+      e && typeof e === 'object' &&
+      ('fecha' in e) && ('monto' in e) &&
+      typeof e.monto !== 'object'
+    )
+  );
+}
+
+function importarHistorialCompleto(event){
+  const file = event.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    let incoming;
+    try{ incoming = JSON.parse(reader.result); }
+    catch(e){ alert('El archivo no es un JSON válido.'); event.target.value=''; return; }
+    if(!esBackupValido(incoming)){
+      alert('El archivo no tiene el formato esperado de un respaldo de historial (revisa que sea un JSON exportado desde "Exportar respaldo").');
+      event.target.value='';
+      return;
+    }
+    const actual = getHistorialClientes();
+    const modo = Object.keys(actual).length
+      ? confirm('¿Combinar el respaldo con el historial actual? Aceptar = combinar, Cancelar = reemplazar todo.')
+      : true;
+    let combinado;
+    if(modo){
+      combinado = {...actual};
+      Object.keys(incoming).forEach(key => {
+        combinado[key] = combinado[key] ? [...combinado[key], ...incoming[key]] : incoming[key];
+      });
+    } else {
+      combinado = incoming;
+    }
+    const ok = setHistorialClientes(combinado);
+    refreshConceptosDatalist();
+    refreshClientesDatalist();
+    checkHistorialDisponible();
+    if(ok){
+      setHistStatus('✅ Respaldo importado correctamente.', '#2FBE8F');
+    } else {
+      setHistStatus('❌ No se pudo importar: este navegador está bloqueando el almacenamiento local.', '#E7A0A8');
+      checkStorageDisponible();
+    }
+    event.target.value = '';
+  };
+  reader.readAsText(file);
+}
+
+let histCount = 0;
+function addHistoryRow(fecha, monto, concepto){
+  histCount++;
+  const id = 'h' + histCount;
+  const row = document.createElement('div');
+  row.className = 'hist-row';
+  row.id = id;
+  row.innerHTML = `
+    <input type="date" class="h-fecha" value="${fecha||''}">
+    <input type="text" class="h-concepto" placeholder="Concepto (opcional)" value="${concepto||''}">
+    <input type="number" step="0.01" min="0" class="h-monto" placeholder="Monto" value="${monto||''}" style="grid-column:span 1;">
+    <button type="button" class="hist-remove" onclick="document.getElementById('${id}').remove(); render();">✕</button>
+  `;
+  row.style.gridTemplateColumns = '1fr 1fr 1fr auto';
+  document.getElementById('historyRows').appendChild(row);
+  row.querySelectorAll('input').forEach(inp => inp.addEventListener('input', render));
+  render();
+}
+
+function getHistory(){
+  return [...document.querySelectorAll('#historyRows .hist-row')].map(row => ({
+    fecha: row.querySelector('.h-fecha').value,
+    concepto: row.querySelector('.h-concepto').value.trim(),
+    monto: parseFloat(row.querySelector('.h-monto').value) || 0
+  }));
+}
+
+function render(){
+  const brand = $('brand').value.trim() || 'Recibo de Abono';
+  const folio = $('folio').value.trim() || '—';
+  const fechaRaw = $('fecha').value;
+  const fecha = fechaRaw ? new Date(fechaRaw+'T00:00:00').toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}) : '—';
+  const cliente = $('cliente').value.trim();
+  const concepto = $('concepto').value.trim();
+  const total = parseFloat($('total').value) || 0;
+  const abono = parseFloat($('abono').value) || 0;
+  const metodo = $('metodo').value;
+  const asesor = $('asesor').value.trim();
+  const nota = $('nota').value.trim();
+  const historial = getHistory();
+  const sumaHistorial = historial.reduce((s,h) => s + h.monto, 0);
+  const restante = total - abono - sumaHistorial;
+
+  const histBlock = $('p-history-block');
+  const histBody = $('p-history-body');
+  if(historial.length && $('show-historial').checked){
+    histBlock.style.display = 'block';
+    histBody.innerHTML = historial.map(h => {
+      const f = h.fecha ? new Date(h.fecha+'T00:00:00').toLocaleDateString('es-MX',{day:'2-digit',month:'short'}) : '—';
+      return `<tr><td>${f}</td><td>${h.concepto || '—'}</td><td>${money(h.monto)}</td></tr>`;
+    }).join('') + `<tr class="tot-row"><td colspan="2">Total abonado antes</td><td>${money(sumaHistorial)}</td></tr>`;
+  } else {
+    histBlock.style.display = 'none';
+    histBody.innerHTML = '';
+  }
+
+  $('p-brand').textContent = brand;
+  $('p-folio').textContent = 'Folio: ' + folio;
+  $('p-fecha').textContent = fecha;
+
+  $('p-cliente-block').style.display = (cliente && $('show-cliente').checked) ? 'block' : 'none';
+  $('p-cliente').textContent = cliente;
+
+  $('p-concepto-block').style.display = (concepto && $('show-concepto').checked) ? 'block' : 'none';
+  $('p-concepto').textContent = concepto;
+
+  $('p-total').textContent = money(total);
+  $('p-abono').textContent = money(abono);
+  $('p-metodo').textContent = metodo;
+  $('p-metodo-block').style.display = $('show-metodo').checked ? 'flex' : 'none';
+  $('p-meta-row').style.display = $('show-folio').checked ? 'flex' : 'none';
+
+  const heroEl = $('p-restante');
+  const labelEl = $('p-hero-label');
+  const noteEl = $('p-hero-note');
+
+  if(restante > 0){
+    labelEl.textContent = 'Adeudo restante';
+    heroEl.textContent = money(restante);
+    heroEl.className = 'amt debt';
+    noteEl.textContent = '';
+  } else if (restante === 0){
+    labelEl.textContent = 'Adeudo restante';
+    heroEl.textContent = money(0);
+    heroEl.className = 'amt credit';
+    noteEl.textContent = 'Cuenta liquidada ✓';
+  } else {
+    labelEl.textContent = 'Saldo a favor del cliente';
+    heroEl.textContent = money(Math.abs(restante));
+    heroEl.className = 'amt credit';
+    noteEl.textContent = 'El abono superó el adeudo total';
+  }
+
+  $('p-nota-block').style.display = (nota && $('show-nota').checked) ? 'block' : 'none';
+  $('p-nota').textContent = nota;
+
+  const asesorVisible = asesor && $('show-asesor').checked;
+  $('p-advisor-block').style.visibility = asesorVisible ? 'visible' : 'hidden';
+  $('p-asesor-label').textContent = asesorVisible ? 'Atendió' : '';
+  $('p-asesor').textContent = asesorVisible ? asesor : '';
+
+  $('stamp').innerHTML = buildStamp(restante <= 0);
+}
+
+['brand','folio','fecha','cliente','concepto','total','abono','metodo','asesor','nota']
+  .forEach(id => $(id).addEventListener('input', render));
+
+// Pequeña pausa mientras escribes antes de autocargar, para no reconstruir
+// el historial en cada tecla.
+let debounceHistorial = null;
+['cliente','concepto'].forEach(id => $(id).addEventListener('input', () => {
+  clearTimeout(debounceHistorial);
+  debounceHistorial = setTimeout(checkHistorialDisponible, 450);
+}));
+
+['brand','asesor'].forEach(id => $(id).addEventListener('input', guardarPreferencias));
+
+function toggleDark(){
+  $('receipt').classList.toggle('receipt-dark', $('darkMode').checked);
+}
+
+function restablecer(){
+  ['cliente','concepto','total','abono','nota','nota-abono'].forEach(id => $(id).value='');
+  $('metodo').value = 'Efectivo';
+  $('historyRows').innerHTML = '';
+  ['show-cliente','show-concepto','show-historial','show-metodo','show-nota','show-folio','show-asesor']
+    .forEach(id => $(id).checked = true);
+  $('darkMode').checked = false;
+  toggleDark();
+  ultimoClienteCargado = null;
+  ultimoAbonoAutoguardado = null;
+  initDefaults();
+  setHistStatus('');
+  render();
+}
+
+async function generarArchivoImagen(){
+  const canvas = await html2canvas(document.getElementById('receipt'), {scale:2, backgroundColor:bgActual()});
+  const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
+  const nombre = ($('folio').value || 'recibo') + '.png';
+  return { canvas, blob, file: new File([blob], nombre, {type:'image/png'}) };
+}
+
+async function compartirWhatsApp(){
+  autoguardarAbonoSiCorresponde();
+  try{
+    const { file } = await generarArchivoImagen();
+    if(navigator.canShare && navigator.canShare({ files:[file] })){
+      await navigator.share({
+        files:[file],
+        title:'Recibo de abono',
+        text:`Recibo de abono — folio ${$('folio').value}`
+      });
+      return;
+    }
+  }catch(e){
+    if(e.name === 'AbortError') return; // usuario canceló el share sheet
+  }
+  // Fallback: descarga la imagen y abre WhatsApp con un mensaje para adjuntarla a mano
+  const { canvas } = await generarArchivoImagen();
+  const link = document.createElement('a');
+  link.download = ($('folio').value || 'recibo') + '.png';
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+  const texto = encodeURIComponent(`Recibo de abono — folio ${$('folio').value}. Adjunto la imagen que se acaba de descargar 📎`);
+  window.open(`https://wa.me/?text=${texto}`, '_blank');
+}
+
+function bgActual(){
+  return $('darkMode').checked ? '#101B2C' : '#FBF7EE';
+}
+
+async function descargarImagen(){
+  autoguardarAbonoSiCorresponde();
+  const canvas = await html2canvas(document.getElementById('receipt'), {scale:2, backgroundColor:bgActual()});
+  const link = document.createElement('a');
+  link.download = ($('folio').value || 'recibo') + '.png';
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+}
+
+async function descargarPDF(){
+  autoguardarAbonoSiCorresponde();
+  const canvas = await html2canvas(document.getElementById('receipt'), {scale:2, backgroundColor:bgActual()});
+  const imgData = canvas.toDataURL('image/png');
+  const { jsPDF } = window.jspdf;
+  const pxPerMm = 3.7795;
+  const wMm = canvas.width / 2 / pxPerMm;
+  const hMm = canvas.height / 2 / pxPerMm;
+  const pdf = new jsPDF({ orientation: wMm > hMm ? 'l' : 'p', unit:'mm', format:[wMm, hMm] });
+  pdf.addImage(imgData, 'PNG', 0, 0, wMm, hMm);
+  pdf.save(($('folio').value || 'recibo') + '.pdf');
+}
+
+checkStorageDisponible();
+initDefaults();
+refreshConceptosDatalist();
+refreshClientesDatalist();
+checkRecordatorioRespaldo();
+render();
+</script>
+</body>
+</html>
