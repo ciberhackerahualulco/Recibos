@@ -1,0 +1,1545 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Recibos">
+<title>Recibo de abono</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
+<style>
+:root{
+  --text:#F4F1EA; --muted:#8E8E96; --stroke:rgba(255,255,255,.12);
+  --gold-hi:#F3D68B; --gold:#E8C27A; --gold-2:#B8862B;
+  --ok:#4ADE9F; --bad:#FF7F8E; --radius:22px;
+  --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,system-ui,sans-serif;
+  --serif:ui-serif,"New York",Georgia,"Times New Roman",serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;background:#000}
+body{min-height:100vh;color:var(--text);font:15px/1.5 var(--sans);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* Grano sutil para que los degradados no se vean con bandas */
+body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:50;opacity:.06;mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+
+/* Fondo: orbes de color detrás del cristal. "Negro puro" los apaga. */
+.orbs{position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden}
+.orbs i{position:absolute;border-radius:50%;filter:blur(90px);opacity:.2}
+.orbs i:nth-child(1){width:560px;height:560px;background:#B8862B;top:-200px;left:-140px}
+.orbs i:nth-child(2){width:480px;height:480px;background:#1F6F5C;top:34%;right:-180px}
+.orbs i:nth-child(3){width:400px;height:400px;background:#1E3A6E;bottom:-160px;left:28%}
+body.puro .orbs{display:none}
+
+/* Cristal */
+.glass{
+  background:linear-gradient(160deg,rgba(255,255,255,.085),rgba(255,255,255,.02));
+  border:1px solid var(--stroke);border-radius:var(--radius);
+  -webkit-backdrop-filter:blur(28px) saturate(170%);backdrop-filter:blur(28px) saturate(170%);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.1),0 24px 48px -24px rgba(0,0,0,.9);
+}
+body.puro .glass{background:#0A0A0A;-webkit-backdrop-filter:none;backdrop-filter:none}
+
+/* Barra superior */
+.top{position:sticky;top:10px;z-index:30;max-width:1080px;margin:10px auto 0;padding:10px 12px 10px 14px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;border-radius:20px}
+.brand{display:flex;align-items:center;gap:12px;min-width:0}
+.logo{width:38px;height:38px;border-radius:12px;flex-shrink:0;display:grid;place-items:center;background:linear-gradient(135deg,var(--gold-hi),var(--gold-2));color:#1A1205;font:700 18px/1 var(--serif)}
+.brand h1{font:600 1.1rem/1.1 var(--serif);margin:0}
+.brand p{margin:2px 0 0;color:var(--muted);font-size:.78rem}
+
+.seg{display:flex;gap:2px;padding:3px;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid var(--stroke)}
+.seg button{flex:1;border:0;background:transparent;padding:8px 14px;border-radius:999px;color:var(--muted);cursor:pointer;font-weight:600;font-size:.84rem;white-space:nowrap;transition:background .2s,color .2s}
+.seg button[aria-pressed=true]{background:var(--gold);color:#1A1205}
+.seg.mini button{padding:7px 10px;font-size:.8rem}
+
+/* Layout */
+.layout{max-width:1080px;margin:0 auto;padding:18px 16px 60px;display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:24px;align-items:start}
+.pane-clientes{display:none;grid-column:1/-1}
+.layout[data-tab=clientes] .pane-clientes{display:block}
+.layout[data-tab=clientes] .pane-editar,.layout[data-tab=clientes] .stage{display:none}
+.stage{position:sticky;top:96px}
+@media (max-width:960px){
+  .layout{grid-template-columns:1fr}
+  .stage{position:static}
+  .layout[data-tab=editar] .stage{display:none}
+  .layout[data-tab=vista] .pane-editar{display:none}
+}
+
+/* Resumen en vivo */
+.resumen{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:16px 20px;margin-bottom:14px}
+.resumen small{display:block;color:var(--muted);font-size:.78rem}
+.resumen strong{font:700 1.6rem/1.1 var(--mono);letter-spacing:-.02em}
+.resumen strong.ok{color:var(--ok)}
+.resumen .folio{font:.74rem var(--mono);color:var(--muted);text-align:right}
+
+/* Tarjetas */
+.card{padding:18px;margin-bottom:14px}
+.card h2{font:600 .8rem var(--sans);color:var(--muted);margin:0 0 12px}
+.card details summary{cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;font-weight:600}
+.card details summary::-webkit-details-marker{display:none}
+.card details summary::after{content:"";width:8px;height:8px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(45deg);margin:0 4px 3px 0;transition:transform .2s}
+.card details[open] summary::after{transform:rotate(-135deg);margin-bottom:-3px}
+.card details .box{margin-top:14px}
+
+/* Campos */
+.f{display:block;margin-bottom:12px}
+.f>span{display:block;font-size:.8rem;color:var(--muted);margin:0 0 6px 2px}
+.opt{font-style:normal;opacity:.7}
+.in{width:100%;background:rgba(255,255,255,.05);border:1px solid var(--stroke);border-radius:14px;padding:12px 14px;font-size:16px;outline:none;transition:border-color .2s,box-shadow .2s}
+.in:focus{border-color:rgba(232,194,122,.6);box-shadow:0 0 0 4px rgba(232,194,122,.14)}
+.mono{font-family:var(--mono)}
+textarea.in{min-height:64px;resize:vertical}
+select.in{appearance:none;-webkit-appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 18px) 55%,calc(100% - 13px) 55%;background-size:5px 5px;background-repeat:no-repeat}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.sub{font-size:.8rem;color:var(--muted);margin:0 0 10px}
+
+/* Botones */
+.btn{border:1px solid var(--stroke);background:rgba(255,255,255,.06);border-radius:14px;padding:12px 14px;font-weight:600;font-size:.9rem;cursor:pointer;transition:transform .12s,background .2s,border-color .2s}
+.btn:hover{background:rgba(255,255,255,.1)}
+.btn:active{transform:scale(.98)}
+.btn:disabled{opacity:.5;cursor:wait}
+.btn-gold{background:linear-gradient(135deg,var(--gold-hi),var(--gold-2));color:#1A1205;border:0}
+.btn-wa{background:linear-gradient(135deg,#4ADE9F,#1F8A66);color:#04140D;border:0}
+.btn-bad{color:var(--bad);border-color:rgba(255,127,142,.35)}
+.btn-sm{padding:8px 12px;font-size:.82rem;border-radius:12px}
+.row-btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.row-btns>.btn{flex:1 1 130px}
+.acciones{display:grid;gap:10px;margin-top:6px}
+
+/* Interruptores */
+.tg{position:relative;display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--stroke);font-size:.9rem;cursor:pointer}
+.tg:last-child{border-bottom:0}
+.tg input{position:absolute;opacity:0;pointer-events:none}
+.tg i{position:relative;width:40px;height:24px;border-radius:99px;background:rgba(255,255,255,.14);flex-shrink:0;transition:background .2s}
+.tg i::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.4)}
+.tg input:checked+i{background:var(--gold-2)}
+.tg input:checked+i::after{transform:translateX(16px)}
+.tg input:focus-visible+i{outline:2px solid var(--gold);outline-offset:2px}
+
+/* Acentos */
+.acentos{display:flex;gap:12px;margin:0 0 14px}
+.sw{width:30px;height:30px;border-radius:50%;border:2px solid transparent;background:var(--c);cursor:pointer;box-shadow:0 0 0 1px rgba(255,255,255,.15)}
+.sw[aria-pressed=true]{border-color:#fff;box-shadow:0 0 0 3px rgba(255,255,255,.18)}
+
+/* Avisos y estado */
+.aviso{border-radius:16px;padding:14px 16px;font-size:.86rem;margin-bottom:14px;border:1px solid}
+.aviso b{display:block;margin-bottom:2px}
+.aviso-warn{background:rgba(255,127,142,.1);border-color:rgba(255,127,142,.3)}
+.aviso-info{background:rgba(232,194,122,.08);border-color:rgba(232,194,122,.3)}
+.st{font-size:.82rem;min-height:1.3em;color:var(--muted);margin:10px 2px 0}
+.st.ok{color:var(--ok)}
+.st.err{color:var(--bad)}
+
+/* Filas de abonos */
+.hrow{display:grid;grid-template-columns:1fr 1.1fr .9fr auto;gap:6px;margin-bottom:8px}
+.hrow .in{padding:10px 11px;font-size:14px;border-radius:12px;min-width:0}
+.hrow .btn{padding:0 12px;font-size:14px}
+
+/* Clientes */
+.filtros{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+.filtros .buscar{flex:1 1 220px}
+.filtros select.in{width:auto;padding:10px 36px 10px 14px;font-size:14px;border-radius:999px}
+.clist{display:grid;gap:12px}
+@media (min-width:700px){.clist{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (min-width:1000px){.clist{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.cli{padding:16px}
+.cli-top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.cli h3{margin:0;font-size:1rem;font-weight:600;overflow-wrap:anywhere}
+.cli p{margin:3px 0 0;color:var(--muted);font-size:.8rem}
+.saldo{font:600 .95rem var(--mono);text-align:right;white-space:nowrap}
+.saldo.debe{color:var(--gold)}
+.saldo.ok{color:var(--ok)}
+.tag{display:inline-block;margin-top:6px;font-size:.7rem;font-weight:600;padding:3px 9px;border-radius:99px;border:1px solid}
+.tag-bad{color:var(--bad);border-color:rgba(255,127,142,.45);background:rgba(255,127,142,.1)}
+.tag-hoy{color:var(--gold);border-color:rgba(232,194,122,.45);background:rgba(232,194,122,.1)}
+.cli-acc{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.cli-body{margin-top:12px;padding-top:12px;border-top:1px solid var(--stroke)}
+.vacio{grid-column:1/-1;text-align:center;color:var(--muted);padding:30px 10px}
+
+/* Recibo */
+.paper{max-width:380px;margin:0 auto;filter:drop-shadow(0 30px 40px rgba(0,0,0,.6))}
+#receipt{
+  --bg2:#FBF7EE; --ink:#10243E; --muted2:#7A7264; --line2:#D9CFB4; --soft:#F1EAD9;
+  --ok2:#1F6F5C;
+  background:var(--bg2);color:var(--ink);padding:30px 26px 40px;font-family:var(--sans);
+  clip-path:polygon(0 0,100% 0,100% 96%,95% 100%,90% 96%,85% 100%,80% 96%,75% 100%,70% 96%,65% 100%,60% 96%,55% 100%,50% 96%,45% 100%,40% 96%,35% 100%,30% 96%,25% 100%,20% 96%,15% 100%,10% 96%,5% 100%,0 96%);
+}
+#receipt[data-estilo=negro]{--bg2:#000;--ink:#F4F1EA;--muted2:#8E8E96;--line2:#2A2A2A;--soft:#0E0E0E;--ok2:#4ADE9F;box-shadow:inset 0 0 0 1px #1F1F1F}
+#receipt[data-estilo=cristal]{--bg2:#0E0E12;--ink:#F4F1EA;--muted2:#9A9AA6;--line2:rgba(255,255,255,.16);--soft:rgba(255,255,255,.06);--ok2:#4ADE9F;background-image:linear-gradient(160deg,rgba(255,255,255,.15),rgba(255,255,255,.02) 45%);box-shadow:inset 0 1px 0 rgba(255,255,255,.2)}
+.r-head{text-align:center;padding-bottom:14px;margin-bottom:14px;border-bottom:1px dashed var(--line2)}
+.r-brand{font:600 1.22rem/1.15 var(--serif);margin:0}
+.r-sub{font-size:.76rem;color:var(--muted2);margin:3px 0 0}
+.r-meta{display:flex;justify-content:space-between;font:.72rem var(--mono);color:var(--muted2);margin-top:10px}
+.r-block{margin-bottom:12px}
+.r-k{font-size:.74rem;color:var(--muted2);margin-bottom:2px}
+.r-v{font-weight:600}
+.r-line{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:9px 0;border-bottom:1px dotted var(--line2);font-size:.86rem}
+.r-line b{font:600 .95rem var(--mono)}
+.r-hist{margin:12px 0 4px}
+.r-hist table{width:100%;border-collapse:collapse;font:.8rem var(--mono)}
+.r-hist th{font:600 .7rem var(--sans);color:var(--muted2);text-align:left;border-bottom:1px solid var(--line2);padding-bottom:4px}
+.r-hist td{padding:5px 0;border-bottom:1px dotted var(--line2)}
+.r-hist th:last-child,.r-hist td:last-child{text-align:right}
+.r-hist tr.tot td{font-weight:700;border:0}
+.r-hero{margin:16px 0 4px;background:var(--soft);border:1px solid var(--line2);border-radius:10px;padding:14px;text-align:center}
+.amt{font:700 1.7rem/1.2 var(--mono);letter-spacing:-.02em}
+.amt.ok{color:var(--ok2)}
+.r-note{margin:14px 0 0;font-size:.84rem;font-style:italic;color:var(--muted2);line-height:1.4}
+.r-foot{display:flex;justify-content:space-between;align-items:flex-end;gap:10px;margin-top:20px}
+.r-adv{font-size:.74rem;color:var(--muted2)}
+.r-adv b{display:block;color:var(--ink);font-size:.82rem}
+.stamp{width:92px;height:92px;flex-shrink:0;transform:rotate(-11deg)}
+.stamp svg{width:100%;height:100%;overflow:visible}
+.stamp.pop{animation:sello .55s cubic-bezier(.2,.8,.2,1)}
+@keyframes sello{0%{transform:rotate(-11deg) scale(1.7);opacity:0}60%{opacity:1}100%{transform:rotate(-11deg) scale(1);opacity:1}}
+.hint{text-align:center;color:var(--muted);font-size:.8rem;margin:14px auto 0;max-width:380px}
+
+@media (max-width:600px){
+  .top{top:6px;margin:6px 10px 0;width:calc(100% - 20px)}
+  .brand h1{font-size:1rem}
+  .seg button{padding:8px 10px}
+  .resumen strong{font-size:1.35rem}
+}
+.theme-btn{width:40px;height:40px;flex:none;border-radius:50%;display:grid;place-items:center;
+  border:1px solid var(--stroke);background:rgba(255,255,255,.06);color:var(--gold);cursor:pointer;margin-right:10px;-webkit-tap-highlight-color:transparent}
+.theme-btn:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.theme-btn .ic{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.theme-btn .i-moon{display:none}
+body.light .theme-btn .i-sun{display:none}
+body.light .theme-btn .i-moon{display:inline}
+body.light{background:#FBF7EE;--text:#1F1B16;--muted:#6B6259;--stroke:rgba(0,0,0,.12);--gold:#8A6A2A;--gold-hi:#8A6A2A;}
+body{padding-bottom:64px}
+.creditbar{position:fixed;left:0;right:0;bottom:0;z-index:50;padding:8px 16px calc(8px + env(safe-area-inset-bottom,0px));
+  text-align:center;font-size:.66rem;letter-spacing:.02em;color:var(--muted);
+  background:color-mix(in srgb,var(--bg2,#000) 72%,transparent);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
+  border-top:1px solid var(--stroke)}
+.creditbar b{color:#D4AF37;font-weight:600;font-size:.72rem;letter-spacing:.03em;text-shadow:0 1px 1px rgba(0,0,0,.3)}
+@media (prefers-reduced-transparency:reduce){.creditbar{background:var(--bg2,#000);-webkit-backdrop-filter:none;backdrop-filter:none}}
+/* Encabezado: título centrado, botón de tema discreto a la izquierda */
+.top{display:grid;grid-template-columns:34px 1fr 34px;align-items:center;justify-items:stretch;row-gap:10px;column-gap:8px}
+.top > .theme-btn{grid-column:1;grid-row:1;justify-self:start;margin-right:0;width:34px;height:34px;border:0;background:transparent;opacity:.55;transition:opacity .2s}
+.top > .theme-btn:hover,.top > .theme-btn:focus-visible{opacity:1}
+.top > .theme-btn .ic{width:18px;height:18px}
+.top > .brand{grid-column:2;grid-row:1;justify-content:center;text-align:center;min-width:0}
+.top > .brand > div{text-align:center}
+.top > .seg{grid-column:1 / -1;grid-row:2;justify-self:center}
+.top > .theme-btn{}
+body.light .top > .theme-btn{color:var(--muted)}
+/* Textura discreta del botón de tema: grano fino y brillo interior */
+.top > .theme-btn{
+  background-color:rgba(255,255,255,.04);
+  background-image:
+    radial-gradient(circle at 30% 25%,rgba(255,255,255,.18),transparent 55%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .07 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  border-radius:50%;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.12),inset 0 -1px 0 rgba(0,0,0,.25),0 1px 2px rgba(0,0,0,.25);
+}
+body.light .top > .theme-btn{
+  background-color:rgba(0,0,0,.03);
+  background-image:
+    radial-gradient(circle at 30% 25%,rgba(255,255,255,.7),transparent 55%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 .05 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.8),0 1px 2px rgba(0,0,0,.12);
+}
+/* Botón de instalar: derecha, misma altura que el botón de tema */
+.top > #btn-instalar{grid-column:3 !important;grid-row:1 !important;justify-self:end !important;margin:0}
+#btn-instalar[hidden]{display:none !important}
+</style>
+</head>
+<body>
+
+<div class="orbs" aria-hidden="true"><i></i><i></i><i></i></div>
+
+<header class="top glass">
+  <button type="button" id="btn-tema" class="theme-btn" aria-label="Cambiar a modo claro" aria-pressed="false">
+    <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path class="i-sun" d="M12 4V2M12 22v-2M4.9 4.9 3.5 3.5M20.5 20.5l-1.4-1.4M2 12H4M20 12h2M4.9 19.1 3.5 20.5M20.5 3.5l-1.4 1.4"/><circle cx="12" cy="12" r="4"/><path class="i-moon" d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+  </button>
+  <div class="brand">
+    <div class="logo" aria-hidden="true">$</div>
+    <div>
+      <h1>Recibo de abono</h1>
+      <p>Comprobantes de pago</p>
+    </div>
+  </div>
+  <nav class="seg" aria-label="Secciones">
+    <button type="button" data-go="editar" aria-pressed="true">Editar</button>
+    <button type="button" data-go="vista" aria-pressed="false">Vista previa</button>
+    <button type="button" data-go="clientes" aria-pressed="false">Clientes</button>
+  </nav>
+  <button type="button" id="btn-instalar" class="theme-btn" aria-label="Instalar como app" title="Instalar como app" hidden>
+    <svg class="ic" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
+  </button>
+</header>
+
+<main id="main" class="layout" data-tab="editar">
+
+  <!-- ============ EDITAR ============ -->
+  <section class="pane-editar" aria-label="Datos del recibo">
+
+    <div class="resumen glass" aria-live="polite">
+      <div>
+        <small id="res-label">Adeudo restante</small>
+        <strong id="res-amt">$0.00</strong>
+      </div>
+      <div class="folio" id="res-folio"></div>
+    </div>
+
+    <div id="banner-storage" class="aviso aviso-warn" hidden>
+      <b>Este navegador bloquea el guardado local</b>
+      El borrador, el historial y las preferencias no se guardarán. Abre la página desde un navegador normal, no desde modo privado ni desde una app integrada.
+    </div>
+
+    <div id="banner-backup" class="aviso aviso-info" hidden>
+      <b>Hace tiempo que no exportas un respaldo</b>
+      <span id="backup-text"></span>
+      <div class="row-btns">
+        <button type="button" class="btn btn-gold btn-sm" id="btn-backup-now">Exportar ahora</button>
+        <button type="button" class="btn btn-sm" id="btn-backup-later">Ahora no</button>
+      </div>
+    </div>
+
+    <form id="form" autocomplete="off">
+
+      <section class="glass card">
+        <h2>Cliente</h2>
+        <label class="f">
+          <span>Nombre</span>
+          <input class="in" id="cliente" type="text" list="dl-clientes" placeholder="Ej. Juan Pérez">
+          <datalist id="dl-clientes"></datalist>
+        </label>
+        <div class="g2">
+          <label class="f" style="margin-bottom:0">
+            <span>Qué se compró <em class="opt">opcional</em></span>
+            <input class="in" id="concepto" type="text" list="dl-conceptos" placeholder="Ej. Refrigerador">
+            <datalist id="dl-conceptos"></datalist>
+          </label>
+          <label class="f" style="margin-bottom:0">
+            <span>WhatsApp <em class="opt">opcional</em></span>
+            <input class="in mono" id="telefono" type="tel" inputmode="tel" placeholder="10 dígitos">
+          </label>
+        </div>
+      </section>
+
+      <section class="glass card">
+        <h2>Pago de hoy</h2>
+        <div class="g2">
+          <label class="f"><span>Adeudo total</span><input class="in mono" id="total" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0.00"></label>
+          <label class="f"><span>Abono</span><input class="in mono" id="abono" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0.00"></label>
+        </div>
+        <div class="g2">
+          <label class="f" style="margin-bottom:0">
+            <span>Método</span>
+            <select class="in" id="metodo">
+              <option>Efectivo</option><option>Transferencia</option><option>Tarjeta</option><option>Depósito</option>
+            </select>
+          </label>
+          <label class="f" style="margin-bottom:0"><span>Atendió <em class="opt">opcional</em></span><input class="in" id="asesor" type="text" placeholder="Tu nombre"></label>
+        </div>
+        <label class="f" style="margin:12px 0 0">
+          <span>Próximo pago <em class="opt">opcional</em></span>
+          <input class="in" id="proximo" type="date">
+        </label>
+      </section>
+
+      <section class="glass card">
+        <details open>
+          <summary>Abonos anteriores</summary>
+          <div class="box">
+            <p class="sub">Se cargan solos al elegir un cliente que ya tiene historial.</p>
+            <div id="rows"></div>
+            <button type="button" class="btn btn-sm" id="btn-add-row">+ Agregar abono anterior</button>
+          </div>
+        </details>
+      </section>
+
+      <section class="glass card">
+        <details>
+          <summary>Historial y respaldo</summary>
+          <div class="box">
+            <label class="f">
+              <span>Nota de este abono <em class="opt">opcional</em></span>
+              <input class="in" id="nota-abono" type="text" placeholder="Ej. pago quincenal">
+            </label>
+            <div class="row-btns" style="margin-top:0">
+              <button type="button" class="btn" id="btn-cargar">Cargar historial</button>
+              <button type="button" class="btn" id="btn-guardar">Guardar este abono</button>
+            </div>
+            <div class="row-btns">
+              <button type="button" class="btn" id="btn-estado-editor">Estado de cuenta (PDF)</button>
+              <button type="button" class="btn btn-bad" id="btn-borrar">Borrar historial</button>
+            </div>
+            <p class="sub" style="margin-top:12px">Cada abono también se guarda solo al descargar o compartir el recibo.</p>
+            <div class="row-btns" style="margin-top:0">
+              <button type="button" class="btn" id="btn-export-resp">Exportar respaldo</button>
+              <button type="button" class="btn" id="btn-import-resp">Importar respaldo</button>
+              <input type="file" id="import-file" accept=".json,application/json" hidden>
+            </div>
+            <p id="hist-status" class="st"></p>
+          </div>
+        </details>
+      </section>
+
+      <section class="glass card">
+        <details>
+          <summary>Opciones del recibo</summary>
+          <div class="box">
+            <p class="sub">Estilo del recibo</p>
+            <div class="seg mini" role="group" aria-label="Estilo del recibo" style="margin-bottom:14px">
+              <button type="button" data-estilo-btn="papel" aria-pressed="true">Papel</button>
+              <button type="button" data-estilo-btn="cristal" aria-pressed="false">Cristal</button>
+              <button type="button" data-estilo-btn="negro" aria-pressed="false">Negro</button>
+            </div>
+
+            <p class="sub">Color de acento</p>
+            <div class="acentos" role="group" aria-label="Color de acento">
+              <button type="button" class="sw" data-acento="oro" style="--c:#E8C27A" aria-label="Oro" aria-pressed="true"></button>
+              <button type="button" class="sw" data-acento="esmeralda" style="--c:#6EE7B7" aria-label="Esmeralda" aria-pressed="false"></button>
+              <button type="button" class="sw" data-acento="azul" style="--c:#93C5FD" aria-label="Azul" aria-pressed="false"></button>
+            </div>
+
+            <label class="tg"><span>Fondo negro puro (AMOLED)</span><input type="checkbox" id="puro"><i></i></label>
+
+            <label class="f" style="margin-top:14px"><span>Negocio o encabezado</span>
+              <input class="in" id="brand" type="text" value="Recibo de abono">
+            </label>
+            <div class="g2">
+              <label class="f"><span>Folio</span><input class="in mono" id="folio" type="text"></label>
+              <label class="f"><span>Fecha</span><input class="in" id="fecha" type="date"></label>
+            </div>
+            <label class="f"><span>Nota para el recibo <em class="opt">opcional</em></span>
+              <textarea class="in" id="nota" placeholder="Ej. Gracias por su pago puntual"></textarea>
+            </label>
+
+            <p class="sub" style="margin-top:4px">Mostrar en el recibo</p>
+            <label class="tg"><span>Nombre del cliente</span><input type="checkbox" id="show-cliente" checked><i></i></label>
+            <label class="tg"><span>Concepto</span><input type="checkbox" id="show-concepto" checked><i></i></label>
+            <label class="tg"><span>Historial de abonos</span><input type="checkbox" id="show-historial" checked><i></i></label>
+            <label class="tg"><span>Método de pago</span><input type="checkbox" id="show-metodo" checked><i></i></label>
+            <label class="tg"><span>Próximo pago</span><input type="checkbox" id="show-proximo" checked><i></i></label>
+            <label class="tg"><span>Nota</span><input type="checkbox" id="show-nota" checked><i></i></label>
+            <label class="tg"><span>Folio y fecha</span><input type="checkbox" id="show-folio" checked><i></i></label>
+            <label class="tg"><span>Nombre del asesor</span><input type="checkbox" id="show-asesor" checked><i></i></label>
+          </div>
+        </details>
+      </section>
+
+      <div class="acciones">
+        <button type="button" class="btn btn-gold" id="btn-png">Descargar imagen (PNG)</button>
+        <div class="row-btns" style="margin-top:0">
+          <button type="button" class="btn" id="btn-pdf">Descargar PDF</button>
+          <button type="button" class="btn btn-wa" id="btn-wa">Compartir</button>
+        </div>
+        <button type="button" class="btn btn-sm" id="btn-reset" style="background:none;border-color:transparent;color:var(--muted);justify-self:center">Empezar un recibo nuevo</button>
+      </div>
+    </form>
+  </section>
+
+  <!-- ============ VISTA PREVIA ============ -->
+  <aside class="stage" aria-label="Vista previa">
+    <div class="paper">
+      <article id="receipt" data-estilo="papel" aria-label="Recibo">
+        <header class="r-head">
+          <p class="r-brand" id="p-brand"></p>
+          <p class="r-sub">Comprobante de pago</p>
+          <div class="r-meta" id="p-meta"><span id="p-folio"></span><span id="p-fecha"></span></div>
+        </header>
+
+        <div class="r-block" id="p-cliente-b" hidden><div class="r-k">Cliente</div><div class="r-v" id="p-cliente"></div></div>
+        <div class="r-block" id="p-concepto-b" hidden><div class="r-k">Concepto</div><div class="r-v" id="p-concepto"></div></div>
+
+        <div class="r-line"><span>Adeudo total</span><b id="p-total"></b></div>
+        <div class="r-line"><span>Abono recibido</span><b id="p-abono"></b></div>
+        <div class="r-line" id="p-metodo-b"><span>Método de pago</span><span id="p-metodo"></span></div>
+        <div class="r-line" id="p-prox" hidden><span>Próximo pago</span><span id="p-prox-val"></span></div>
+
+        <div class="r-hist" id="p-hist" hidden>
+          <table>
+            <thead><tr><th>Fecha</th><th>Concepto</th><th>Monto</th></tr></thead>
+            <tbody id="p-hist-body"></tbody>
+          </table>
+        </div>
+
+        <div class="r-hero">
+          <div class="r-k" id="p-hero-label"></div>
+          <div class="amt" id="p-restante"></div>
+          <div class="r-k" id="p-hero-note"></div>
+        </div>
+
+        <p class="r-note" id="p-nota" hidden></p>
+
+        <footer class="r-foot">
+          <div class="r-adv" id="p-asesor-b" hidden><span>Atendió</span><b id="p-asesor"></b></div>
+          <div class="stamp" id="stamp"></div>
+        </footer>
+      </article>
+    </div>
+    <p class="hint">Estilo, folio y datos se ajustan aquí en vivo. Para compartir usa los botones de Editar.</p>
+  </aside>
+
+  <!-- ============ CLIENTES ============ -->
+  <section class="pane-clientes" aria-label="Clientes guardados">
+    <div class="glass card" style="margin-bottom:16px">
+      <div class="filtros" style="margin-bottom:12px">
+        <input class="in buscar" id="gbuscar" type="search" placeholder="Buscar cliente" style="margin:0">
+        <button type="button" class="btn btn-gold btn-sm" id="btn-cli-nuevo">+ Nuevo recibo</button>
+      </div>
+      <div class="filtros" style="margin-bottom:0">
+        <div class="seg mini" role="group" aria-label="Filtrar">
+          <button type="button" data-filtro="todos" aria-pressed="true">Todos</button>
+          <button type="button" data-filtro="pendientes" aria-pressed="false">Pendientes</button>
+          <button type="button" data-filtro="liquidados" aria-pressed="false">Liquidados</button>
+        </div>
+        <select class="in" id="orden" aria-label="Ordenar">
+          <option value="nombre">Ordenar por nombre</option>
+          <option value="saldo">Mayor saldo primero</option>
+          <option value="proximo">Próximo pago más cercano</option>
+        </select>
+      </div>
+    </div>
+    <div id="clist" class="clist"></div>
+  </section>
+
+</main>
+
+<script>
+/* ============ Utilidades ============ */
+const $ = id => document.getElementById(id);
+const on = id => $(id).checked;
+const show = (id, visible) => { $(id).hidden = !visible; };
+
+const K = {
+  prefs: 'recibo_abonos_prefs',
+  clientes: 'recibo_abonos_historial_clientes',
+  totales: 'recibo_abonos_totales_clientes',
+  folio: 'recibo_abonos_folio_counter',
+  respaldo: 'recibo_abonos_ultimo_respaldo',
+  nombres: 'recibo_abonos_nombres',
+  borrador: 'recibo_abonos_borrador',
+  telefonos: 'recibo_abonos_telefonos',
+  proximos: 'recibo_abonos_proximos'
+};
+
+const store = {
+  get(k, fallback){ try{ const v = localStorage.getItem(k); return v === null ? fallback : JSON.parse(v); }catch{ return fallback; } },
+  set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); return true; }catch{ return false; } },
+  del(k){ try{ localStorage.removeItem(k); }catch{} }
+};
+
+function storageWorks(){
+  try{
+    localStorage.setItem('__t', '1');
+    const ok = localStorage.getItem('__t') === '1';
+    localStorage.removeItem('__t');
+    return ok;
+  }catch{ return false; }
+}
+let storageOk = false;
+
+const MXN = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
+const cents = v => Math.round((parseFloat(v) || 0) * 100);
+const toPesos = v => Math.round((parseFloat(v) || 0) * 100) / 100;
+const money = c => MXN.format(c / 100);
+
+function hoy(){
+  const d = new Date();
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 10);
+}
+const fechaLarga = s => s ? new Date(s + 'T00:00:00').toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+const fechaCorta = s => s ? new Date(s + 'T00:00:00').toLocaleDateString('es-MX', { day: '2-digit', month: 'short' }) : '—';
+
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const normTxt = s => (s || '').trim().replace(/\s+/g, ' ').toLowerCase();
+const keyOf = (cli, con) => normTxt(cli) + '||' + normTxt(con);
+const soloDigitos = s => (s || '').replace(/\D/g, '');
+const numeroWA = tel => { const d = soloDigitos(tel); return d.length === 10 ? '52' + d : d; };
+
+function setStatus(msg, tone){
+  const el = $('hist-status');
+  el.textContent = msg;
+  el.className = 'st' + (tone ? ' ' + tone : '');
+}
+
+const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ============ Estado y datos ============ */
+const S = {
+  rows: [], folio: '', folioN: 0, loadedKey: null, lastAuto: null,
+  expand: new Set(), filtro: 'todos', acento: 'oro', lastLiq: null, lastRest: null
+};
+
+const ACENTOS = {
+  oro:       ['#F3D68B', '#E8C27A', '#B8862B'],
+  esmeralda: ['#A7F3D0', '#6EE7B7', '#1F8A66'],
+  azul:      ['#BFDBFE', '#93C5FD', '#2F5DA8']
+};
+
+const getClientes = () => store.get(K.clientes, {});
+const setClientes = d => store.set(K.clientes, d);
+const getTotales = () => store.get(K.totales, {});
+const getTelefonos = () => store.get(K.telefonos, {});
+const getProximos = () => store.get(K.proximos, {});
+
+function recordarNombres(cli, con){
+  const n = store.get(K.nombres, {});
+  n[keyOf(cli, con)] = { c: cli.trim(), k: (con || '').trim() };
+  store.set(K.nombres, n);
+}
+const nombreCli = key => store.get(K.nombres, {})[key]?.c || key.split('||')[0];
+const nombreCon = key => store.get(K.nombres, {})[key]?.k || key.split('||')[1] || '';
+
+function nuevoFolio(){
+  const d = new Date();
+  const fecha = String(d.getFullYear()).slice(2) + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
+  S.folioN = storageOk ? (store.get(K.folio, 0) | 0) + 1 : 1000 + Math.floor(Math.random() * 9000);
+  S.folio = `R-${fecha}-${String(S.folioN).padStart(4, '0')}`;
+  $('folio').value = S.folio;
+}
+function confirmarFolio(){
+  if(storageOk && $('folio').value === S.folio) store.set(K.folio, S.folioN);
+}
+
+/* ============ Preferencias y apariencia ============ */
+function guardarPrefs(){
+  store.set(K.prefs, {
+    brand: $('brand').value.trim(),
+    asesor: $('asesor').value.trim(),
+    estilo: $('receipt').dataset.estilo,
+    puro: $('puro').checked,
+    acento: S.acento
+  });
+}
+function cargarPrefs(){
+  const p = store.get(K.prefs, {});
+  if(p.brand) $('brand').value = p.brand;
+  if(p.asesor) $('asesor').value = p.asesor;
+  $('puro').checked = !!p.puro;
+  document.body.classList.toggle('puro', !!p.puro);
+  aplicarEstilo(p.estilo || 'papel');
+  aplicarAcento(p.acento || 'oro');
+}
+function aplicarEstilo(estilo){
+  $('receipt').dataset.estilo = estilo;
+  document.querySelectorAll('[data-estilo-btn]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.estiloBtn === estilo)));
+}
+function aplicarAcento(a){
+  S.acento = ACENTOS[a] ? a : 'oro';
+  const [hi, base, dark] = ACENTOS[S.acento];
+  const root = document.documentElement.style;
+  root.setProperty('--gold-hi', hi);
+  root.setProperty('--gold', base);
+  root.setProperty('--gold-2', dark);
+  document.querySelectorAll('[data-acento]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.acento === S.acento)));
+}
+
+/* ============ Pestañas ============ */
+function setTab(t){
+  $('main').dataset.tab = t;
+  document.querySelectorAll('[data-go]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.go === t)));
+  if(t === 'clientes') renderClientes();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+/* ============ Cálculo y recibo ============ */
+function calc(){
+  const total = cents($('total').value);
+  const abono = cents($('abono').value);
+  const previos = S.rows.reduce((s, r) => s + cents(r.monto), 0);
+  return { total, abono, previos, restante: total - previos - abono };
+}
+
+function buildStamp(liquidado, fecha){
+  const oscuro = $('receipt').dataset.estilo !== 'papel';
+  const [, base, dark] = ACENTOS[S.acento];
+  const col = liquidado ? (oscuro ? '#4ADE9F' : '#1F6F5C') : (oscuro ? base : dark);
+  const txt = liquidado ? 'LIQUIDADO' : 'ABONO REGISTRADO';
+  const fechaTxt = fecha ? fecha.split('-').reverse().join('/') : '';
+  return `<svg viewBox="0 0 100 100" aria-hidden="true">
+    <g fill="none" stroke="${col}">
+      <circle cx="50" cy="50" r="47" stroke-width="2.4"/>
+      <circle cx="50" cy="50" r="40" stroke-width="1"/>
+      <path id="arco" d="M50,50 m-33,0 a33,33 0 1,1 66,0 a33,33 0 1,1 -66,0" stroke="none"/>
+    </g>
+    <text font-family="ui-monospace,monospace" font-size="8.4" font-weight="700" letter-spacing="2.2" fill="${col}">
+      <textPath href="#arco">${txt} • ${txt} •</textPath>
+    </text>
+    <text x="50" y="47" text-anchor="middle" font-family="Georgia,serif" font-weight="700" font-size="13" fill="${col}">${liquidado ? '✓' : '$'}</text>
+    <text x="50" y="60" text-anchor="middle" font-family="ui-monospace,monospace" font-size="6" fill="${col}">${fechaTxt}</text>
+  </svg>`;
+}
+
+// Cuenta animada del saldo: sube o baja con suavidad en vez de cambiar de golpe.
+function animarMonto(el, desdeC, hastaC){
+  cancelAnimationFrame(el._raf);
+  if(reduceMotion() || desdeC === null || desdeC === hastaC){
+    el.textContent = money(Math.abs(hastaC));
+    return;
+  }
+  const t0 = performance.now(), dur = 420;
+  const paso = t => {
+    const p = Math.min(1, (t - t0) / dur);
+    const e = 1 - Math.pow(1 - p, 3);
+    el.textContent = money(Math.abs(Math.round(desdeC + (hastaC - desdeC) * e)));
+    if(p < 1) el._raf = requestAnimationFrame(paso);
+  };
+  el._raf = requestAnimationFrame(paso);
+}
+
+function render(){
+  const c = calc();
+  const cliente = $('cliente').value.trim();
+  const concepto = $('concepto').value.trim();
+  const nota = $('nota').value.trim();
+  const asesor = $('asesor').value.trim();
+  const prox = $('proximo').value;
+  const liquidado = c.restante <= 0;
+
+  // Resumen superior con animación
+  $('res-label').textContent = c.restante < 0 ? 'Saldo a favor del cliente' : 'Adeudo restante';
+  animarMonto($('res-amt'), S.lastRest, c.restante);
+  S.lastRest = c.restante;
+  $('res-amt').classList.toggle('ok', liquidado);
+  $('res-folio').textContent = $('folio').value.trim() || '';
+
+  // Recibo
+  $('p-brand').textContent = $('brand').value.trim() || 'Recibo de abono';
+  $('p-folio').textContent = 'Folio ' + ($('folio').value.trim() || '—');
+  $('p-fecha').textContent = fechaLarga($('fecha').value);
+  show('p-meta', on('show-folio'));
+
+  show('p-cliente-b', on('show-cliente') && !!cliente);
+  $('p-cliente').textContent = cliente;
+  show('p-concepto-b', on('show-concepto') && !!concepto);
+  $('p-concepto').textContent = concepto;
+
+  $('p-total').textContent = money(c.total);
+  $('p-abono').textContent = money(c.abono);
+  show('p-metodo-b', on('show-metodo'));
+  $('p-metodo').textContent = $('metodo').value;
+  show('p-prox', on('show-proximo') && !!prox);
+  $('p-prox-val').textContent = fechaLarga(prox);
+
+  const hist = S.rows.filter(r => cents(r.monto) > 0);
+  show('p-hist', on('show-historial') && hist.length > 0);
+  $('p-hist-body').innerHTML =
+    hist.map(r => `<tr><td>${fechaCorta(r.fecha)}</td><td>${esc(r.concepto) || '—'}</td><td>${money(cents(r.monto))}</td></tr>`).join('') +
+    `<tr class="tot"><td colspan="2">Abonado antes</td><td>${money(c.previos)}</td></tr>`;
+
+  $('p-hero-label').textContent = $('res-label').textContent;
+  $('p-restante').textContent = money(Math.abs(c.restante));
+  $('p-restante').classList.toggle('ok', liquidado);
+  $('p-hero-note').textContent = c.restante === 0 ? 'Cuenta liquidada ✓' : c.restante < 0 ? 'El abono superó el adeudo' : '';
+
+  show('p-nota', on('show-nota') && !!nota);
+  $('p-nota').textContent = nota;
+  show('p-asesor-b', on('show-asesor') && !!asesor);
+  $('p-asesor').textContent = asesor;
+
+  // Sello: se estampa con animación solo cuando la cuenta cambia de estado
+  const stamp = $('stamp');
+  stamp.innerHTML = buildStamp(liquidado, $('fecha').value);
+  if(liquidado !== S.lastLiq){
+    S.lastLiq = liquidado;
+    stamp.classList.remove('pop');
+    void stamp.offsetWidth;
+    if(liquidado) stamp.classList.add('pop');
+  }
+
+  guardarBorrador();
+}
+
+/* ============ Borrador automático ============ */
+let timerBorrador = null;
+function guardarBorrador(){
+  clearTimeout(timerBorrador);
+  timerBorrador = setTimeout(() => {
+    const campos = {};
+    ['cliente', 'concepto', 'telefono', 'total', 'abono', 'metodo', 'proximo', 'nota', 'nota-abono'].forEach(id => campos[id] = $(id).value);
+    const mostrar = {};
+    document.querySelectorAll('.tg input[id^="show-"]').forEach(el => mostrar[el.id] = el.checked);
+    store.set(K.borrador, {
+      campos,
+      rows: S.rows,
+      loadedKey: S.loadedKey,
+      folio: $('folio').value,
+      folioAuto: S.folio,
+      folioN: S.folioN,
+      mostrar
+    });
+  }, 250);
+}
+
+function restaurarBorrador(){
+  const d = store.get(K.borrador, null);
+  if(!d) return false;
+  const c = d.campos || {};
+  ['cliente', 'concepto', 'telefono', 'total', 'abono', 'metodo', 'proximo', 'nota', 'nota-abono'].forEach(id => {
+    if(c[id] !== undefined) $(id).value = c[id];
+  });
+  S.rows = (d.rows || []).map(toRow);
+  S.loadedKey = d.loadedKey || null;
+  S.folio = d.folioAuto || '';
+  S.folioN = d.folioN | 0;
+  if(d.folio) $('folio').value = d.folio;
+  Object.entries(d.mostrar || {}).forEach(([id, v]) => { const el = $(id); if(el) el.checked = !!v; });
+  return !!d.folioAuto;
+}
+
+/* ============ Abonos anteriores (filas) ============ */
+const toRow = r => ({ fecha: r.fecha || '', concepto: r.concepto || '', monto: Number(r.monto) || 0 });
+
+function renderRows(){
+  $('rows').innerHTML = S.rows.map((r, i) => `
+    <div class="hrow" data-i="${i}">
+      <input class="in" type="date" data-f="fecha" value="${esc(r.fecha)}" aria-label="Fecha del abono anterior">
+      <input class="in" type="text" data-f="concepto" placeholder="Nota" value="${esc(r.concepto)}" aria-label="Nota del abono anterior">
+      <input class="in mono" type="number" inputmode="decimal" step="0.01" min="0" data-f="monto" placeholder="Monto" value="${r.monto || ''}" aria-label="Monto del abono anterior">
+      <button type="button" class="btn btn-bad" data-del aria-label="Quitar fila">✕</button>
+    </div>`).join('');
+  render();
+}
+
+$('rows').addEventListener('input', e => {
+  const row = e.target.closest('.hrow');
+  const f = e.target.dataset.f;
+  if(!row || !f) return;
+  const r = S.rows[row.dataset.i];
+  r[f] = f === 'monto' ? toPesos(e.target.value) : e.target.value;
+  render();
+});
+$('rows').addEventListener('click', e => {
+  const btn = e.target.closest('[data-del]');
+  if(!btn) return;
+  S.rows.splice(btn.closest('.hrow').dataset.i, 1);
+  renderRows();
+});
+$('btn-add-row').addEventListener('click', () => {
+  S.rows.push({ fecha: '', concepto: '', monto: 0 });
+  renderRows();
+  $('rows').lastElementChild?.querySelector('input')?.focus();
+});
+
+/* ============ Contacto y próximo pago ============ */
+// Teléfono por cliente; próximo pago por cliente + concepto.
+function guardarContacto(){
+  const cli = $('cliente').value.trim();
+  if(!cli) return;
+  const con = $('concepto').value.trim();
+  const tel = getTelefonos();
+  const tk = normTxt(cli);
+  const d = soloDigitos($('telefono').value);
+  if(d) tel[tk] = d; else delete tel[tk];
+  store.set(K.telefonos, tel);
+
+  const pr = getProximos();
+  const key = keyOf(cli, con);
+  if($('proximo').value) pr[key] = $('proximo').value; else delete pr[key];
+  store.set(K.proximos, pr);
+}
+
+/* ============ Historial por cliente ============ */
+function refreshListas(){
+  const cli = new Set(), con = new Set();
+  Object.keys(getClientes()).forEach(k => {
+    cli.add(nombreCli(k));
+    const c = nombreCon(k);
+    if(c) con.add(c);
+  });
+  $('dl-clientes').innerHTML = [...cli].map(v => `<option value="${esc(v)}">`).join('');
+  $('dl-conceptos').innerHTML = [...con].map(v => `<option value="${esc(v)}">`).join('');
+}
+
+function checkHistorial(){
+  const cli = $('cliente').value.trim();
+  const con = $('concepto').value.trim();
+  S.lastAuto = null;
+
+  if(!cli){
+    setStatus('');
+    if(S.loadedKey !== null){ S.rows = []; S.loadedKey = null; renderRows(); }
+    return;
+  }
+
+  const key = keyOf(cli, con);
+  const regs = getClientes()[key] || [];
+
+  // Teléfono y próximo pago del cliente, si existen y el campo está vacío
+  const tel = getTelefonos()[normTxt(cli)];
+  if(tel && !$('telefono').value) $('telefono').value = tel;
+  const prox = getProximos()[key];
+  if(prox && !$('proximo').value) $('proximo').value = prox;
+
+  if(regs.length){
+    if(S.loadedKey !== key && (!S.rows.length || S.loadedKey !== null)){
+      S.rows = regs.map(toRow);
+      S.loadedKey = key;
+      renderRows();
+      setStatus(`✅ Historial cargado: ${regs.length} abono(s) de ${cli}`, 'ok');
+    } else {
+      setStatus(`📁 ${regs.length} abono(s) guardado(s) para ${cli}`, 'ok');
+    }
+  } else {
+    if(S.loadedKey !== null){ S.rows = []; S.loadedKey = null; renderRows(); }
+    storageOk ? setStatus('Cliente nuevo: sin historial todavía.') : setStatus('⚠️ No se puede leer el historial en este navegador.', 'err');
+  }
+
+  const total = getTotales()[key];
+  if(total && !$('total').value) $('total').value = total;
+  render();
+}
+
+function sincronizarHistorial(){
+  const key = keyOf($('cliente').value, $('concepto').value);
+  if(S.loadedKey === key){
+    const regs = getClientes()[key] || [];
+    S.rows = regs.map(toRow);
+    S.loadedKey = regs.length ? key : null;
+    renderRows();
+  }
+  refreshListas();
+  checkHistorial();
+}
+
+function cargarHistorial(){
+  const cli = $('cliente').value.trim();
+  const con = $('concepto').value.trim();
+  if(!cli) return alert('Escribe primero el nombre del cliente.');
+  const regs = getClientes()[keyOf(cli, con)];
+  if(!regs?.length) return alert('No hay historial guardado para este cliente.');
+  if(S.rows.length && !confirm('Esto reemplazará las filas de abonos anteriores que ya escribiste. ¿Continuar?')) return;
+  S.rows = regs.map(toRow);
+  S.loadedKey = keyOf(cli, con);
+  renderRows();
+  setStatus(`✅ Se cargaron ${regs.length} abono(s) anterior(es)`, 'ok');
+}
+
+function guardarAbono(silencioso){
+  const cli = $('cliente').value.trim();
+  const con = $('concepto').value.trim();
+  const abono = toPesos($('abono').value);
+  if(!cli){ if(!silencioso) setStatus('Escribe el nombre del cliente antes de guardar.', 'err'); return false; }
+  if(abono <= 0){ if(!silencioso) setStatus('Captura un abono mayor a cero.', 'err'); return false; }
+
+  const key = keyOf(cli, con);
+  const sig = key + '|' + abono;
+  if(silencioso && S.lastAuto === sig) return true;
+
+  const data = getClientes();
+  (data[key] = data[key] || []).push({ fecha: $('fecha').value || hoy(), concepto: $('nota-abono').value.trim(), monto: abono });
+  const ok = setClientes(data);
+
+  if(ok){
+    S.lastAuto = sig;
+    recordarNombres(cli, con);
+    const total = toPesos($('total').value);
+    if(total > 0){
+      const t = getTotales();
+      t[key] = total;
+      store.set(K.totales, t);
+    }
+    guardarContacto();
+    refreshListas();
+    if(!silencioso) setStatus(`✅ Abono de ${money(cents(abono))} guardado para ${cli}`, 'ok');
+  } else if(!silencioso){
+    setStatus('❌ No se pudo guardar: el navegador bloqueó el almacenamiento.', 'err');
+  }
+  return ok;
+}
+
+function borrarHistorial(){
+  const cli = $('cliente').value.trim();
+  const con = $('concepto').value.trim();
+  if(!cli) return alert('Escribe primero el nombre del cliente.');
+  const key = keyOf(cli, con);
+  const data = getClientes();
+  if(!data[key]) return alert('No hay historial guardado para este cliente.');
+  if(!confirm(`¿Borrar el historial de ${cli}${con ? ' · ' + con : ''}? No se puede deshacer.`)) return;
+  delete data[key];
+  setClientes(data);
+  S.loadedKey = null;
+  S.rows = [];
+  renderRows();
+  refreshListas();
+  renderClientes();
+  setStatus('🗑 Historial borrado.');
+}
+
+/* ============ Estado de cuenta (PDF) ============ */
+function estadoDeCuenta(key){
+  if(!window.jspdf) return setStatus('❌ No cargó la librería de PDF. Revisa tu conexión a internet.', 'err');
+  const regs = getClientes()[key] || [];
+  if(!regs.length) return setStatus('Este cliente no tiene abonos guardados.', 'err');
+
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({ unit: 'mm', format: 'letter' });
+  const cli = nombreCli(key), con = nombreCon(key), total = getTotales()[key];
+  const abonado = regs.reduce((s, e) => s + cents(e.monto), 0);
+  let y = 22;
+
+  pdf.setFont('helvetica', 'bold'); pdf.setFontSize(17);
+  pdf.text('Estado de cuenta', 20, y); y += 9;
+  pdf.setFont('helvetica', 'normal'); pdf.setFontSize(11);
+  pdf.text(cli, 20, y); y += 6;
+  if(con){ pdf.text(con, 20, y); y += 6; }
+  pdf.setTextColor(120);
+  pdf.text('Generado el ' + fechaLarga(hoy()), 20, y); y += 12;
+  pdf.setTextColor(0);
+
+  pdf.setFont('helvetica', 'bold');
+  pdf.text('Fecha', 20, y); pdf.text('Nota', 60, y); pdf.text('Monto', 190, y, { align: 'right' });
+  y += 2; pdf.line(20, y, 190, y); y += 6;
+
+  pdf.setFont('helvetica', 'normal');
+  regs.forEach(e => {
+    if(y > 262){ pdf.addPage(); y = 22; }
+    pdf.text(fechaCorta(e.fecha), 20, y);
+    pdf.text(String(e.concepto || '—').slice(0, 60), 60, y);
+    pdf.text(money(cents(e.monto)), 190, y, { align: 'right' });
+    y += 7;
+  });
+
+  y += 4; pdf.line(20, y, 190, y); y += 8;
+  const linea = (label, val, bold) => {
+    pdf.setFont('helvetica', bold ? 'bold' : 'normal');
+    pdf.text(label, 120, y);
+    pdf.text(val, 190, y, { align: 'right' });
+    y += 7;
+  };
+  linea('Total abonado', money(abonado));
+  if(total){
+    const pend = cents(total) - abonado;
+    linea('Adeudo total', money(cents(total)));
+    linea(pend > 0 ? 'Saldo pendiente' : 'Saldo', pend > 0 ? money(pend) : 'Liquidado', true);
+  } else {
+    pdf.setFont('helvetica', 'normal');
+    pdf.setTextColor(120);
+    pdf.text('Total del adeudo no registrado.', 20, y + 4);
+    pdf.setTextColor(0);
+  }
+
+  pdf.save(`estado-${cli.replace(/[^\w]+/g, '_')}.pdf`);
+}
+
+/* ============ Recordatorio de próximo pago (.ics) ============ */
+function descargarRecordatorio(key){
+  const prox = getProximos()[key];
+  if(!prox) return setStatus('Este cliente no tiene próximo pago registrado.', 'err');
+  const [y, m, d] = prox.split('-').map(Number);
+  const inicio = new Date(y, m - 1, d);
+  const fin = new Date(y, m - 1, d + 1);
+  const ymd = dt => `${dt.getFullYear()}${String(dt.getMonth() + 1).padStart(2, '0')}${String(dt.getDate()).padStart(2, '0')}`;
+  const cli = nombreCli(key), con = nombreCon(key);
+  const ics = [
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Recibo de abono//ES',
+    'BEGIN:VEVENT',
+    `UID:${Date.now()}@recibo-abono`,
+    `DTSTAMP:${ymd(new Date())}T000000Z`,
+    `DTSTART;VALUE=DATE:${ymd(inicio)}`,
+    `DTEND;VALUE=DATE:${ymd(fin)}`,
+    `SUMMARY:Pago de abono - ${cli}`,
+    `DESCRIPTION:${con ? con + '. ' : ''}Próximo pago de ${cli}.`,
+    'BEGIN:VALARM', 'TRIGGER:-P1D', 'ACTION:DISPLAY', 'DESCRIPTION:Pago mañana', 'END:VALARM',
+    'END:VEVENT', 'END:VCALENDAR'
+  ].join('\r\n');
+  descargarBlob(new Blob([ics], { type: 'text/calendar' }), `pago-${cli.replace(/[^\w]+/g, '_')}.ics`);
+}
+
+/* ============ WhatsApp por cliente ============ */
+function mensajeCobro(key){
+  const cli = nombreCli(key), con = nombreCon(key), t = getTotales()[key];
+  const abonado = (getClientes()[key] || []).reduce((s, e) => s + cents(e.monto), 0);
+  const prox = getProximos()[key];
+  let texto = `Hola ${cli}. `;
+  if(t){
+    const pend = cents(t) - abonado;
+    texto += pend > 0
+      ? `Le recordamos que su saldo pendiente${con ? ' de ' + con : ''} es ${money(pend)}. `
+      : `Le confirmamos que su cuenta${con ? ' de ' + con : ''} está liquidada. `;
+  } else {
+    texto += 'Le escribo sobre su cuenta. ';
+  }
+  if(prox) texto += `Su próximo pago es el ${fechaLarga(prox)}.`;
+  return texto.trim();
+}
+
+function abrirWhatsAppCliente(key){
+  const num = numeroWA(getTelefonos()[normTxt(nombreCli(key))]);
+  if(!num) return setStatus('Este cliente no tiene WhatsApp registrado.', 'err');
+  window.open(`https://wa.me/${num}?text=${encodeURIComponent(mensajeCobro(key))}`, '_blank', 'noopener');
+}
+
+/* ============ Pestaña Clientes ============ */
+function saldoDe(key, abonadoC){
+  const t = getTotales()[key];
+  return t ? cents(t) - abonadoC : null;
+}
+
+function renderClientes(){
+  const q = normTxt($('gbuscar').value);
+  const data = getClientes();
+  const tot = getTotales();
+  const tel = getTelefonos();
+  const pr = getProximos();
+  const hoyStr = hoy();
+
+  let items = Object.keys(data).map(key => {
+    const ent = data[key];
+    const abonadoC = ent.reduce((s, e) => s + cents(e.monto), 0);
+    return { key, ent, abonadoC, pend: saldoDe(key, abonadoC), nombre: nombreCli(key) };
+  });
+
+  if(q) items = items.filter(i => i.nombre.toLowerCase().includes(q));
+  if(S.filtro === 'pendientes') items = items.filter(i => i.pend !== null && i.pend > 0);
+  if(S.filtro === 'liquidados') items = items.filter(i => i.pend !== null && i.pend <= 0);
+
+  const orden = $('orden').value;
+  items.sort((a, b) => {
+    if(orden === 'saldo'){
+      return (b.pend ?? -Infinity) - (a.pend ?? -Infinity) || a.nombre.localeCompare(b.nombre, 'es');
+    }
+    if(orden === 'proximo'){
+      const pa = pr[a.key] || '9999', pb = pr[b.key] || '9999';
+      return pa.localeCompare(pb) || a.nombre.localeCompare(b.nombre, 'es');
+    }
+    return a.nombre.localeCompare(b.nombre, 'es');
+  });
+
+  if(!items.length){
+    $('clist').innerHTML = `<p class="vacio">${q || S.filtro !== 'todos' ? 'Ningún cliente coincide con el filtro.' : 'Todavía no hay clientes guardados. Guarda un abono desde Editar.'}</p>`;
+    return;
+  }
+
+  $('clist').innerHTML = items.map(({ key, ent, abonadoC, pend, nombre }) => {
+    let saldo = 'Sin total', cls = '';
+    if(pend !== null){
+      if(pend > 0){ saldo = money(pend); cls = 'debe'; }
+      else { saldo = 'Liquidado ✓'; cls = 'ok'; }
+    }
+
+    let tag = '';
+    const prox = pr[key];
+    if(prox && pend !== null && pend > 0){
+      if(prox < hoyStr) tag = '<span class="tag tag-bad">Pago vencido</span>';
+      else if(prox === hoyStr) tag = '<span class="tag tag-hoy">Pago hoy</span>';
+    }
+
+    const abierto = S.expand.has(key);
+    const tiene = !!tel[normTxt(nombre)];
+    const filas = ent.map((e, i) => `
+      <div class="hrow" data-key="${esc(key)}" data-i="${i}">
+        <input class="in" type="date" data-f="fecha" value="${esc(e.fecha)}" aria-label="Fecha">
+        <input class="in" type="text" data-f="concepto" value="${esc(e.concepto)}" placeholder="Nota" aria-label="Nota">
+        <input class="in mono" type="number" inputmode="decimal" step="0.01" min="0" data-f="monto" value="${e.monto}" aria-label="Monto">
+        <button type="button" class="btn btn-bad" data-gdel aria-label="Eliminar abono">✕</button>
+      </div>`).join('');
+
+    return `
+      <article class="cli glass" data-key="${esc(key)}">
+        <div class="cli-top">
+          <div>
+            <h3>${esc(nombre)}</h3>
+            <p>${esc(nombreCon(key)) || 'Sin concepto específico'} · ${ent.length} abono(s) · abonado ${money(abonadoC)}</p>
+            ${tag}
+          </div>
+          <b class="saldo ${cls}">${saldo}</b>
+        </div>
+        <div class="cli-acc">
+          <button type="button" class="btn btn-gold btn-sm" data-usar>Usar en recibo</button>
+          <button type="button" class="btn btn-sm" data-expandir aria-expanded="${abierto}">${abierto ? 'Ocultar abonos' : 'Ver abonos'}</button>
+          <button type="button" class="btn btn-sm" data-estado>Estado (PDF)</button>
+          ${tiene ? '<button type="button" class="btn btn-wa btn-sm" data-wa>WhatsApp</button>' : ''}
+          ${prox ? '<button type="button" class="btn btn-sm" data-ics>Recordatorio</button>' : ''}
+          <button type="button" class="btn btn-bad btn-sm" data-delc>Borrar</button>
+        </div>
+        <div class="cli-body" ${abierto ? '' : 'hidden'}>${filas || '<p class="sub">Sin abonos.</p>'}</div>
+      </article>`;
+  }).join('');
+}
+
+function abrirCliente(key){
+  const regs = getClientes()[key] || [];
+  $('cliente').value = nombreCli(key);
+  $('concepto').value = nombreCon(key);
+  $('telefono').value = getTelefonos()[normTxt(nombreCli(key))] || '';
+  $('proximo').value = getProximos()[key] || '';
+  S.rows = regs.map(toRow);
+  S.loadedKey = regs.length ? key : null;
+  S.lastAuto = null;
+  const t = getTotales()[key];
+  $('total').value = t || '';
+  $('abono').value = '';
+  renderRows();
+  setTab('editar');
+  setStatus(`✅ ${regs.length} abono(s) cargados para ${nombreCli(key)}`, 'ok');
+}
+
+$('gbuscar').addEventListener('input', renderClientes);
+$('orden').addEventListener('change', renderClientes);
+document.querySelectorAll('[data-filtro]').forEach(b => b.addEventListener('click', () => {
+  S.filtro = b.dataset.filtro;
+  document.querySelectorAll('[data-filtro]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  renderClientes();
+}));
+
+$('clist').addEventListener('click', e => {
+  const art = e.target.closest('.cli');
+  if(!art) return;
+  const key = art.dataset.key;
+
+  if(e.target.closest('[data-usar]')) return abrirCliente(key);
+  if(e.target.closest('[data-estado]')) return estadoDeCuenta(key);
+  if(e.target.closest('[data-wa]')) return abrirWhatsAppCliente(key);
+  if(e.target.closest('[data-ics]')) return descargarRecordatorio(key);
+
+  if(e.target.closest('[data-expandir]')){
+    S.expand.has(key) ? S.expand.delete(key) : S.expand.add(key);
+    return renderClientes();
+  }
+
+  if(e.target.closest('[data-delc]')){
+    if(!confirm(`¿Borrar todo el historial de ${nombreCli(key)}? No se puede deshacer.`)) return;
+    const d = getClientes();
+    delete d[key];
+    setClientes(d);
+    refreshListas();
+    renderClientes();
+    sincronizarHistorial();
+    return;
+  }
+
+  const gdel = e.target.closest('[data-gdel]');
+  if(gdel){
+    if(!confirm('¿Eliminar este abono? No se puede deshacer.')) return;
+    const row = gdel.closest('.hrow');
+    const d = getClientes();
+    const lista = d[row.dataset.key];
+    if(!lista) return;
+    lista.splice(+row.dataset.i, 1);
+    if(!lista.length) delete d[row.dataset.key];
+    setClientes(d);
+    refreshListas();
+    renderClientes();
+    sincronizarHistorial();
+  }
+});
+
+$('clist').addEventListener('change', e => {
+  const row = e.target.closest('.hrow');
+  const f = e.target.dataset.f;
+  if(!row || !f) return;
+  const d = getClientes();
+  const entrada = d[row.dataset.key]?.[+row.dataset.i];
+  if(!entrada) return;
+  entrada[f] = f === 'monto' ? toPesos(e.target.value) : e.target.value;
+  setClientes(d);
+  refreshListas();
+  renderClientes();
+  sincronizarHistorial();
+});
+
+$('btn-cli-nuevo').addEventListener('click', () => { setTab('editar'); $('cliente').focus(); });
+
+/* ============ Respaldo ============ */
+function descargarBlob(blob, nombre){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = nombre;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+function exportarRespaldo(){
+  const data = getClientes();
+  if(!Object.keys(data).length) return setStatus('Todavía no hay historial para exportar.', 'err');
+  descargarBlob(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), `respaldo-abonos-${hoy()}.json`);
+  store.set(K.respaldo, new Date().toISOString());
+  $('banner-backup').hidden = true;
+  setStatus('✅ Respaldo exportado.', 'ok');
+}
+
+function revisarRespaldo(){
+  if(!storageOk || !Object.keys(getClientes()).length) return;
+  const ultimo = store.get(K.respaldo, null);
+  const dias = ultimo ? (Date.now() - new Date(ultimo)) / 864e5 : Infinity;
+  if(dias < 7) return;
+  $('backup-text').textContent = ultimo
+    ? 'Tu último respaldo fue hace más de 7 días. Si cambias de celular o se borran los datos, se pierde.'
+    : 'Tu historial vive solo en este navegador. Si cambias de celular o se borran los datos, se pierde.';
+  $('banner-backup').hidden = false;
+}
+
+const firmaAbono = e => [e.fecha, e.monto, e.concepto || ''].join('|');
+function combinar(actual, entrante){
+  const out = { ...actual };
+  for(const key of Object.keys(entrante)){
+    const lista = [...(out[key] || [])];
+    const vistos = new Set(lista.map(firmaAbono));
+    entrante[key].forEach(e => {
+      if(!vistos.has(firmaAbono(e))){ lista.push(e); vistos.add(firmaAbono(e)); }
+    });
+    out[key] = lista;
+  }
+  return out;
+}
+
+function esBackup(o){
+  return !!o && typeof o === 'object' && !Array.isArray(o) &&
+    Object.entries(o).every(([k, v]) =>
+      k.includes('||') && Array.isArray(v) &&
+      v.every(e => e && typeof e.fecha === 'string' && typeof e.monto === 'number' &&
+        (e.concepto === undefined || typeof e.concepto === 'string')));
+}
+
+$('import-file').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if(!file) return;
+
+  let entrante;
+  try{ entrante = JSON.parse(await file.text()); }
+  catch{ return alert('El archivo no es un JSON válido.'); }
+  if(!esBackup(entrante)) return alert('El archivo no tiene el formato de un respaldo de este recibo.');
+
+  const actual = getClientes();
+  let resultado = entrante;
+  if(Object.keys(actual).length){
+    if(confirm('¿Combinar con el historial actual?\nAceptar = combinar, sin duplicar abonos.\nCancelar = decidir si reemplazar todo.')){
+      resultado = combinar(actual, entrante);
+    } else if(!confirm('¿Reemplazar TODO el historial actual con el respaldo? No se puede deshacer.')){
+      return;
+    }
+  }
+
+  if(setClientes(resultado)){
+    S.loadedKey = null;
+    refreshListas();
+    renderClientes();
+    sincronizarHistorial();
+    setStatus('✅ Respaldo importado. Historial actualizado.', 'ok');
+  } else {
+    setStatus('❌ No se pudo importar: el navegador bloqueó el almacenamiento.', 'err');
+  }
+});
+
+/* ============ Exportar recibo ============ */
+async function accion(fn, btn){
+  if($('cliente').value.trim() && toPesos($('abono').value) > 0) guardarAbono(true);
+  if($('cliente').value.trim()) guardarContacto();
+  btn.disabled = true;
+  try{
+    await fn();
+    confirmarFolio();
+  }catch(err){
+    console.error(err);
+    setStatus('❌ ' + (err.message || 'No se pudo generar el recibo.'), 'err');
+  }finally{
+    btn.disabled = false;
+  }
+}
+
+async function capturar(){
+  if(!window.html2canvas) throw new Error('No cargó la librería de imagen. Revisa tu conexión a internet.');
+  const el = $('receipt');
+  return html2canvas(el, { scale: 2, backgroundColor: getComputedStyle(el).backgroundColor, useCORS: true });
+}
+
+const nombreArchivo = ext => ($('folio').value.trim() || 'recibo').replace(/[^\w-]+/g, '_') + '.' + ext;
+
+async function exportarPNG(){
+  const canvas = await capturar();
+  canvas.toBlob(blob => descargarBlob(blob, nombreArchivo('png')), 'image/png');
+}
+
+async function exportarPDF(){
+  const canvas = await capturar();
+  if(!window.jspdf) throw new Error('No cargó la librería de PDF. Revisa tu conexión a internet.');
+  const { jsPDF } = window.jspdf;
+  const pxPorMm = 3.7795;
+  const w = canvas.width / 2 / pxPorMm;
+  const h = canvas.height / 2 / pxPorMm;
+  const pdf = new jsPDF({ orientation: w > h ? 'l' : 'p', unit: 'mm', format: [w, h] });
+  pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, w, h);
+  pdf.save(nombreArchivo('pdf'));
+}
+
+async function compartirRecibo(){
+  const canvas = await capturar();
+  const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
+  const file = new File([blob], nombreArchivo('png'), { type: 'image/png' });
+  const texto = `Recibo de abono — folio ${$('folio').value}`;
+
+  if(navigator.canShare && navigator.canShare({ files: [file] })){
+    try{
+      await navigator.share({ files: [file], title: 'Recibo de abono', text: texto });
+      return;
+    }catch(err){
+      if(err.name === 'AbortError') return;
+    }
+  }
+  // Respaldo: descarga la imagen y abre WhatsApp (con el número si existe) para adjuntarla.
+  descargarBlob(blob, file.name);
+  const num = numeroWA(getTelefonos()[normTxt($('cliente').value)]);
+  const url = (num ? `https://wa.me/${num}` : 'https://wa.me/') + '?text=' + encodeURIComponent(texto + '. Adjunto la imagen que acabo de descargar 📎');
+  window.open(url, '_blank', 'noopener');
+  setStatus('Imagen descargada. Adjúntala en WhatsApp.', 'ok');
+}
+
+/* ============ Reinicio ============ */
+function restablecer(){
+  if(!confirm('¿Empezar un recibo nuevo? El historial de los clientes no se borra.')) return;
+  ['cliente', 'concepto', 'telefono', 'total', 'abono', 'proximo', 'nota', 'nota-abono'].forEach(id => $(id).value = '');
+  $('metodo').value = 'Efectivo';
+  $('fecha').value = hoy();
+  nuevoFolio();
+  S.rows = [];
+  S.loadedKey = null;
+  S.lastAuto = null;
+  S.lastRest = null;
+  document.querySelectorAll('.tg input[id^="show-"]').forEach(el => el.checked = true);
+  store.del(K.borrador);
+  setStatus('');
+  renderRows();
+}
+
+/* ============ Eventos ============ */
+$('form').addEventListener('submit', e => e.preventDefault());
+
+document.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => setTab(b.dataset.go)));
+document.querySelectorAll('[data-estilo-btn]').forEach(b => b.addEventListener('click', () => {
+  aplicarEstilo(b.dataset.estiloBtn);
+  guardarPrefs();
+  render();
+}));
+document.querySelectorAll('[data-acento]').forEach(b => b.addEventListener('click', () => {
+  aplicarAcento(b.dataset.acento);
+  guardarPrefs();
+  render();
+}));
+
+['brand', 'asesor'].forEach(id => $(id).addEventListener('input', () => { guardarPrefs(); render(); }));
+['folio', 'fecha', 'total', 'abono', 'metodo', 'nota', 'nota-abono'].forEach(id => $(id).addEventListener('input', render));
+['telefono', 'proximo'].forEach(id => $(id).addEventListener('input', () => { guardarContacto(); render(); }));
+document.querySelectorAll('.tg input[id^="show-"]').forEach(el => el.addEventListener('change', render));
+
+$('puro').addEventListener('change', () => {
+  document.body.classList.toggle('puro', $('puro').checked);
+  guardarPrefs();
+});
+
+let timerCli = null;
+['cliente', 'concepto'].forEach(id => $(id).addEventListener('input', () => {
+  clearTimeout(timerCli);
+  timerCli = setTimeout(checkHistorial, 350);
+  render();
+}));
+
+$('btn-backup-now').addEventListener('click', exportarRespaldo);
+$('btn-backup-later').addEventListener('click', () => { $('banner-backup').hidden = true; });
+$('btn-cargar').addEventListener('click', cargarHistorial);
+$('btn-guardar').addEventListener('click', () => guardarAbono(false));
+$('btn-borrar').addEventListener('click', borrarHistorial);
+$('btn-estado-editor').addEventListener('click', () => {
+  const cli = $('cliente').value.trim();
+  if(!cli) return setStatus('Escribe primero el nombre del cliente.', 'err');
+  estadoDeCuenta(keyOf(cli, $('concepto').value.trim()));
+});
+$('btn-export-resp').addEventListener('click', exportarRespaldo);
+$('btn-import-resp').addEventListener('click', () => $('import-file').click());
+$('btn-png').addEventListener('click', e => accion(exportarPNG, e.currentTarget));
+$('btn-pdf').addEventListener('click', e => accion(exportarPDF, e.currentTarget));
+$('btn-wa').addEventListener('click', e => accion(compartirRecibo, e.currentTarget));
+$('btn-reset').addEventListener('click', restablecer);
+
+/* ============ Arranque ============ */
+storageOk = storageWorks();
+$('banner-storage').hidden = storageOk;
+cargarPrefs();
+const borradorTenia = restaurarBorrador();
+if(!borradorTenia) nuevoFolio();
+$('fecha').value = hoy();
+refreshListas();
+revisarRespaldo();
+if(S.rows.length === 0 && $('cliente').value.trim()) checkHistorial();
+renderRows();
+
+if('serviceWorker' in navigator && location.protocol.startsWith('http')){
+  navigator.serviceWorker.register('sw.js').catch(err => console.warn('Sin modo sin conexión:', err));
+}
+</script>
+<div class="creditbar" role="contentinfo">✨ Hecho por <b>Abraham Fernando Ulloa O.</b> ✨</div>
+<script>
+(() => {
+  'use strict';
+  let ac = null;
+  function tick() {
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      ac = ac || new AC();
+      if (ac.state === 'suspended') ac.resume();
+      const o = ac.createOscillator(), g = ac.createGain(), t = ac.currentTime;
+      o.frequency.setValueAtTime(600, t); o.frequency.exponentialRampToValueAtTime(200, t + .1);
+      g.gain.setValueAtTime(.09, t); g.gain.exponentialRampToValueAtTime(.01, t + .1);
+      o.connect(g).connect(ac.destination); o.start(t); o.stop(t + .1);
+    } catch (e) {}
+  }
+  function vib() { try { if (navigator.vibrate) navigator.vibrate(25); } catch (e) {} }
+  document.addEventListener('click', e => { if (e.target.closest('button')) { tick(); vib(); } });
+
+  const btn = document.getElementById('btn-tema');
+  const aplicar = claro => {
+    document.body.classList.toggle('light', claro);
+    btn.setAttribute('aria-pressed', String(claro));
+    btn.setAttribute('aria-label', claro ? 'Cambiar a modo oscuro' : 'Cambiar a modo claro');
+    const m = document.querySelector('meta[name="theme-color"]');
+    if (m) m.content = claro ? '#FBF7EE' : '#000000';
+  };
+  let claroGuardado = false;
+  try { claroGuardado = localStorage.getItem('recibo_tema') === 'claro'; } catch (e) {}
+  aplicar(claroGuardado);
+  btn.addEventListener('click', () => {
+    const claro = !document.body.classList.contains('light');
+    aplicar(claro);
+    try { localStorage.setItem('recibo_tema', claro ? 'claro' : 'oscuro'); } catch (e) {}
+  });
+})();
+</script>
+<script>
+(() => {
+  'use strict';
+  const btn = document.getElementById('btn-instalar');
+  if (!btn) return;
+  const yaInstalada = () => (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+  if (yaInstalada()) return;
+  const esIOS = /iPad|iPhone|iPod/.test(navigator.userAgent || '');
+  let aviso = null;
+  window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); aviso = e; btn.hidden = false; });
+  if (esIOS) btn.hidden = false;
+  window.addEventListener('appinstalled', () => { btn.hidden = true; aviso = null; });
+  btn.addEventListener('click', async () => {
+    if (aviso) {
+      aviso.prompt();
+      const r = await aviso.userChoice;
+      if (r.outcome === 'accepted') btn.hidden = true;
+      aviso = null;
+      return;
+    }
+    alert('Para instalar: toca Compartir y luego "Añadir a pantalla de inicio".');
+  });
+})();
+</script>
+</body>
+</html>
